@@ -19,7 +19,7 @@ exports.handleAlert = async (req, res) => {
             confidence: confidence || 0.9,
             livenessScore: livenessScore || 1.0,
             personCount: personCount || 1,
-            evidenceImage: image, 
+            evidenceImage: image,
             status: 'processing',
             metadata: metadata || { deviceId: "CAM_01", location: "Main Entrance" }
         });
@@ -27,27 +27,39 @@ exports.handleAlert = async (req, res) => {
         const savedAlert = await newAlert.save();
         console.log(`\x1b[32m [DATABASE] \x1b[0m Alert persisted. Evidence size: ${image ? Math.round(image.length / 1024) : 0} KB`);
 
-        // 2. Dispatch Email with Inline Evidence Snapshot
-        const emailResponse = await emailService.sendEmailWithEvidence({
-            type: savedAlert.type,
-            confidence: savedAlert.confidence,
-            personCount: savedAlert.personCount,
-            image: image, // Base64 snapshot
-            timestamp: savedAlert.timestamp,
-            firePct: firePct || 0
-        });
-
-        // 3. Update Database status after dispatch attempt
-        await Alert.findByIdAndUpdate(savedAlert._id, { 
-            status: emailResponse.success ? 'dispatched' : 'email_failed' 
-        });
-
-        return res.status(200).json({
+        // Return immediate response to prevent frontend lag
+        res.status(200).json({
             success: true,
             alertId: savedAlert._id,
-            emailStatus: emailResponse.success ? 'Sent' : 'Failed',
+            emailStatus: 'Processing',
             personCount: savedAlert.personCount
         });
+
+        // Background task: wait 1 second, then dispatch email and call
+        setTimeout(async () => {
+            try {
+                // 2. Dispatch Email with Inline Evidence Snapshot
+                const emailResponse = await emailService.sendEmailWithEvidence({
+                    type: savedAlert.type,
+                    confidence: savedAlert.confidence,
+                    personCount: savedAlert.personCount,
+                    image: image, // Base64 snapshot
+                    timestamp: savedAlert.timestamp,
+                    firePct: firePct || 0
+                });
+
+                // 3. Update Database status after dispatch attempt
+                await Alert.findByIdAndUpdate(savedAlert._id, {
+                    status: emailResponse.success ? 'dispatched' : 'email_failed'
+                });
+
+                // 4. Trigger Twilio Phone Call Alert
+                const callService = require('../services/callService');
+                callService.dispatchCall(savedAlert.type);
+            } catch (bgError) {
+                console.error(`\x1b[31m [BACKGROUND DISPATCH ERROR] \x1b[0m`, bgError.message);
+            }
+        }, 1000);
 
     } catch (error) {
         console.error(`\x1b[31m [CONTROLLER ERROR] \x1b[0m`, error.message);
