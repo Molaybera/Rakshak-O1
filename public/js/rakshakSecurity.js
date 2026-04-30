@@ -43,7 +43,6 @@ const RakshakLiveness = {
     reset() {
         this.earBuffer = [];
         this.noseBuffer = [];
-        this.zBuffer = [];
         this.frameCount = 0;
         this.decision = null;
         this.scanProgress = 0;
@@ -88,21 +87,30 @@ const RakshakLiveness = {
 
         document.getElementById('liveness-ring').style.display = 'block';
 
-        const kps = faces[0].keypoints;
-        const nose = kps.find(k => k.name === 'noseTip') || kps[1];
-        if (!nose) return this.decision;
+        const landmarks = faces[0].landmarks;
+        if (!landmarks) return this.decision;
 
-        // Collect metrics
-        const ear = this._getEAR(kps);
+        const leftEye = landmarks.getLeftEye();
+        const rightEye = landmarks.getRightEye();
+        const nose = landmarks.getNose()[0];
+
+        if (!leftEye || !rightEye || !nose) return this.decision;
+
+        const getEAR = (eye) => {
+            const h1 = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y);
+            const h2 = Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y);
+            const w = Math.hypot(eye[0].x - eye[3].x, eye[0].y - eye[3].y);
+            return (h1 + h2) / (2.0 * w);
+        };
+
+        const ear = (getEAR(leftEye) + getEAR(rightEye)) / 2;
         this.earBuffer.push(ear);
         this.noseBuffer.push({ x: nose.x, y: nose.y });
-        this.zBuffer.push(nose.z || 0);
         this.frameCount++;
 
         // Trim to window
         if (this.earBuffer.length > this.WINDOW) this.earBuffer.shift();
         if (this.noseBuffer.length > this.WINDOW) this.noseBuffer.shift();
-        if (this.zBuffer.length > this.WINDOW) this.zBuffer.shift();
 
         // Update progress
         this.scanProgress = Math.min(this.frameCount / this.WINDOW, 1.0);
@@ -129,19 +137,13 @@ const RakshakLiveness = {
         }
         const avgNoseMove = noseTravel / (this.noseBuffer.length - 1);
 
-        // ── FACTOR 3: Z-depth variance ──
-        const zMean = this.zBuffer.reduce((a, b) => a + b, 0) / this.zBuffer.length;
-        const zVar = this.zBuffer.reduce((s, v) => s + (v - zMean) ** 2, 0) / this.zBuffer.length;
-
         // Thresholds (tuned for 640×480 video)
-        const BLINK_THRESH = 0.00006;  // EAR variance during blinks
+        const BLINK_THRESH = 0.00003;  // EAR variance during blinks (adjusted for face-api)
         const MOVE_THRESH = 0.4;       // pixels average nose travel
-        const Z_THRESH = 0.00001;   // Z depth variance
 
         const hasLiveness =
             earVariance > BLINK_THRESH ||
-            avgNoseMove > MOVE_THRESH ||
-            zVar > Z_THRESH;
+            avgNoseMove > MOVE_THRESH;
 
         this.decision = hasLiveness ? 'live' : 'spoof';
 
@@ -177,92 +179,36 @@ const RakshakIdentity = {
             RakshakLogger.add('Identity DB offline. Matching disabled.', 'alert');
         }
     },
-    // Build a rich feature vector from face keypoints:
-    // 936 spatial (x,y) + 468 depth (z) + 8 geometric ratios = 1412 values
-    _buildVector(points, nose, lEye, rEye) {
-        const eyeDist = Math.hypot(lEye.x - rEye.x, lEye.y - rEye.y) || 1;
-        const g = i => points[i] || { x: nose.x, y: nose.y, z: 0 };
-
-        // Spatial: all 468 landmarks normalized by eye-distance
-        const spatial = points.map(kp => [
-            (kp.x - nose.x) / eyeDist,
-            (kp.y - nose.y) / eyeDist
-        ]).flat();
-
-        // Depth: Z coordinates amplified (3D face shape discriminator)
-        const depth = points.map(kp => ((kp.z || 0) / eyeDist) * 8);
-
-        // Geometric ratios — highly discriminative for similar-looking people
-        const chin = g(152);   // chin tip
-        const leftJaw = g(234);   // left jaw
-        const rightJaw = g(454);   // right jaw
-        const noseBase = g(2);     // nose base
-        const upperLip = g(13);    // upper lip
-        const leftBrow = g(70);    // left brow peak
-        const rightBrow = g(300);   // right brow peak
-        const leftOuter = g(33);    // left eye outer
-        const rightOuter = g(263);   // right eye outer
-
-        const faceW = Math.hypot(leftJaw.x - rightJaw.x, leftJaw.y - rightJaw.y);
-        const faceH = Math.hypot(nose.x - chin.x, nose.y - chin.y);
-        const browW = Math.hypot(leftBrow.x - rightBrow.x, leftBrow.y - rightBrow.y);
-        const noseH = Math.hypot(nose.x - noseBase.x, nose.y - noseBase.y);
-        const lipY = Math.hypot(nose.x - upperLip.x, nose.y - upperLip.y);
-        const eyeW = Math.hypot(leftOuter.x - rightOuter.x, leftOuter.y - rightOuter.y);
-        const browH = Math.abs(((leftBrow.y + rightBrow.y) / 2) - ((lEye.y + rEye.y) / 2)) / (eyeDist || 1);
-        const jawRatio = faceW / (faceH || 1);
-
-        // Scale ratios so they have similar magnitude to spatial features
-        const ratios = [
-            (faceW / eyeDist) * 5,
-            (faceH / eyeDist) * 5,
-            (browW / eyeDist) * 5,
-            (noseH / eyeDist) * 5,
-            (lipY / eyeDist) * 5,
-            (eyeW / eyeDist) * 5,
-            browH * 10,
-            jawRatio * 5
-        ];
-
-        return [...spatial, ...depth, ...ratios];
-    },
-
     match(faces) {
         if (!faces || faces.length === 0 || this.profiles.length === 0) return null;
-        const points = faces[0].keypoints;
-        const nose = points.find(k => k.name === 'noseTip') || points[1];
-        const lEye = points.find(k => k.name === 'leftEye');
-        const rEye = points.find(k => k.name === 'rightEye');
-        if (!nose || !lEye || !rEye) return null;
-
-        const eyeDist = Math.hypot(lEye.x - rEye.x, lEye.y - rEye.y);
-        if (eyeDist < 5) return null;  // face too small / too far
-
-        const liveVec = this._buildVector(points, nose, lEye, rEye);
+        if (!faces[0].descriptor) return null;
+        
+        const liveVec = faces[0].descriptor;
 
         let best = null, bestDist = Infinity, secondDist = Infinity;
 
         this.profiles.forEach(user => {
-            // Support both new multi-angle (faceEmbeddings) and legacy single (faceEmbedding)
             let allEmbeddings = [];
             if (user.faceEmbeddings && user.faceEmbeddings.length > 0) {
                 allEmbeddings = user.faceEmbeddings;
             } else if (user.faceEmbedding && user.faceEmbedding.length > 0) {
-                allEmbeddings = [user.faceEmbedding]; // legacy single embedding
+                allEmbeddings = [user.faceEmbedding];
             }
             if (allEmbeddings.length === 0) return;
+            
+            // Skip if this is a legacy 1412D embedding to prevent crash
+            if (allEmbeddings[0].length > 128) return;
 
             // Find the BEST (minimum distance) match across all stored angles
             let userBestDist = Infinity;
             allEmbeddings.forEach(stored => {
-                if (!stored || stored.length === 0) return;
-                const len = Math.min(liveVec.length, stored.length);
+                if (!stored || stored.length !== 128) return;
                 let sumSq = 0;
-                for (let i = 0; i < len; i++) {
+                for (let i = 0; i < 128; i++) {
                     const d = liveVec[i] - stored[i];
                     sumSq += d * d;
                 }
-                const dist = Math.sqrt(sumSq / len);
+                const dist = Math.sqrt(sumSq); // Standard Euclidean distance for 128D
                 if (dist < userBestDist) userBestDist = dist;
             });
 
@@ -275,7 +221,6 @@ const RakshakIdentity = {
             }
         });
 
-        // Debug: log match distances every 30 frames
         if (!this._debugCounter) this._debugCounter = 0;
         this._debugCounter++;
         if (this._debugCounter % 30 === 0 && best) {
@@ -283,9 +228,9 @@ const RakshakIdentity = {
             console.log(`[IDENTITY] Best: "${best.name}" dist=${bestDist.toFixed(4)} (${angles} angles) | 2nd=${secondDist.toFixed(4)}`);
         }
 
-        // Threshold: multi-angle enrollment makes matching more reliable
-        // Same person best-angle ≈ 0.02–0.06 | Different person ≈ 0.10+
-        const THRESHOLD = 0.09;
+        // Deep learning descriptor threshold (Euclidean distance)
+        // Values < 0.4 are very certain matches, < 0.5 are good matches.
+        const THRESHOLD = 0.52;
 
         // Margin check: winner must be ≥20% better than runner-up
         const MARGIN = 0.20;
@@ -303,21 +248,18 @@ const RakshakSecurity = {
     lastCount: 0,
     alertCooldown: 0,
 
-    // Draw face bounding boxes from MediaPipe keypoints
+    // Draw face bounding boxes from face-api.js results
     drawFaceBox(ctx, canvas, faces, matchedUser, livenessResult) {
         let personCount = 0;
 
         faces.forEach(face => {
             personCount++;
-            const kps = face.keypoints;
+            const box = face.detection ? face.detection.box : face.box;
 
-            // Compute face bounding box from landmark extents
-            const xs = kps.map(k => k.x);
-            const ys = kps.map(k => k.y);
-            const x = Math.max(0, Math.min(...xs) - 10);
-            const y = Math.max(0, Math.min(...ys) - 10);
-            const w = Math.min(canvas.width - x, Math.max(...xs) - Math.min(...xs) + 20);
-            const h = Math.min(canvas.height - y, Math.max(...ys) - Math.min(...ys) + 20);
+            const x = Math.max(0, box.x - 10);
+            const y = Math.max(0, box.y - 10);
+            const w = box.width + 20;
+            const h = box.height + 20;
 
             // Determine state
             const isSpoof = livenessResult === 'spoof';

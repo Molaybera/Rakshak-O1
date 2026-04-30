@@ -7,7 +7,7 @@
     <title>Rakshak O1 | Biometric Enrollment</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.min.js"></script>
     <style>
         :root {
             --bg-deep: #0f172a;
@@ -457,13 +457,10 @@
             // 1. Load AI model FIRST (works without camera)
             try {
                 document.getElementById('loader-text').innerText = 'Loading AI Engine...';
-                await tf.setBackend('webgl');
-                await tf.ready();
-                document.getElementById('loader-text').innerText = 'Loading Biometric Model...';
-                detector = await faceLandmarksDetection.createDetector(
-                    faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
-                    { runtime: 'tfjs', refineLandmarks: true }
-                );
+                await faceapi.nets.ssdMobilenetv1.loadFromUri('/models');
+                await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+                await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
+                detector = true; // Set flag when ready
             } catch (err) {
                 console.error('Model load error:', err);
                 document.getElementById('loader-text').innerText = 'AI Engine failed to load.';
@@ -559,14 +556,14 @@
             img.src = snap.toDataURL('image/jpeg', 0.95);
             await new Promise(r => { img.onload = r; });
             
-            const faces = await detector.estimateFaces(img);
+            const faces = await faceapi.detectAllFaces(img).withFaceLandmarks().withFaceDescriptors();
             if (!faces || faces.length === 0) {
                 alert('No face detected. Please ensure your face is clearly visible.');
                 modeTag.innerText = 'LIVE CAMERA';
                 return;
             }
             
-            cameraEmbeddings.push(extractEmbedding(faces));
+            cameraEmbeddings.push(Array.from(faces[0].descriptor));
             captureStep++;
             showToast(`✓ ${CAPTURE_POSES[captureStep-1]} angle captured!`, 'success');
 
@@ -636,7 +633,7 @@
         async function analyzeStill(imgEl) {
             if (!detector) return false;
             try {
-                const faces = await detector.estimateFaces(imgEl);
+                const faces = await faceapi.detectAllFaces(imgEl);
                 return faces && faces.length > 0;
             } catch { return false; }
         }
@@ -646,14 +643,13 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             if (!found) return;
             try {
-                const faces = await detector.estimateFaces(imgEl);
+                const faces = await faceapi.detectAllFaces(imgEl);
                 if (!faces || faces.length === 0) return;
-                const kps = faces[0].keypoints;
-                const xs = kps.map(k => k.x), ys = kps.map(k => k.y);
-                const x = Math.max(0, Math.min(...xs) - 12);
-                const y = Math.max(0, Math.min(...ys) - 12);
-                const w = Math.max(...xs) - Math.min(...xs) + 24;
-                const h = Math.max(...ys) - Math.min(...ys) + 24;
+                const box = faces[0].box;
+                const x = box.x - 12;
+                const y = box.y - 12;
+                const w = box.width + 24;
+                const h = box.height + 24;
 
                 ctx.strokeStyle = '#10b981';
                 ctx.lineWidth = 3;
@@ -683,7 +679,7 @@
                 bCtx.drawImage(video, 0, 0);
                 bCtx.filter = 'none';
 
-                const faces = await detector.estimateFaces(boostCanvas);
+                const faces = await faceapi.detectAllFaces(boostCanvas);
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
                 if (faces && faces.length > 0) {
@@ -692,12 +688,11 @@
                     setBadge('detected');
 
                     // Draw a soft green outline around detected face
-                    const kps = faces[0].keypoints;
-                    const xs = kps.map(k => k.x), ys = kps.map(k => k.y);
-                    const x = Math.max(0, Math.min(...xs) - 10);
-                    const y = Math.max(0, Math.min(...ys) - 10);
-                    const w = Math.max(...xs) - Math.min(...xs) + 20;
-                    const h = Math.max(...ys) - Math.min(...ys) + 20;
+                    const box = faces[0].box;
+                    const x = box.x - 10;
+                    const y = box.y - 10;
+                    const w = box.width + 20;
+                    const h = box.height + 20;
                     ctx.strokeStyle = 'rgba(16,185,129,0.7)';
                     ctx.lineWidth = 2;
                     ctx.strokeRect(x, y, w, h);
@@ -708,40 +703,6 @@
                 }
             } catch { }
             requestAnimationFrame(drawLoop);
-        }
-
-        // Helper: build rich feature vector from MediaPipe points
-        function extractEmbedding(faces) {
-            const points = faces[0].keypoints;
-            const nose = points.find(k => k.name === 'noseTip') || points[1];
-            const lEye = points.find(k => k.name === 'leftEye');
-            const rEye = points.find(k => k.name === 'rightEye');
-            const eyeDist = Math.hypot(lEye.x - rEye.x, lEye.y - rEye.y) || 1;
-            const g = i => points[i] || { x: nose.x, y: nose.y, z: 0 };
-
-            const spatial = points.map(kp => [
-                (kp.x - nose.x) / eyeDist,
-                (kp.y - nose.y) / eyeDist
-            ]).flat();
-            const depth = points.map(kp => ((kp.z || 0) / eyeDist) * 8);
-
-            const chin = g(152), leftJaw = g(234), rightJaw = g(454);
-            const noseBase = g(2), upperLip = g(13);
-            const leftBrow = g(70), rightBrow = g(300);
-            const leftOuter = g(33), rightOuter = g(263);
-            const faceW = Math.hypot(leftJaw.x - rightJaw.x, leftJaw.y - rightJaw.y);
-            const faceH = Math.hypot(nose.x - chin.x, nose.y - chin.y);
-            const ratios = [
-                (faceW / eyeDist) * 5,
-                (faceH / eyeDist) * 5,
-                (Math.hypot(leftBrow.x - rightBrow.x, leftBrow.y - rightBrow.y) / eyeDist) * 5,
-                (Math.hypot(nose.x - noseBase.x, nose.y - noseBase.y) / eyeDist) * 5,
-                (Math.hypot(nose.x - upperLip.x, nose.y - upperLip.y) / eyeDist) * 5,
-                (Math.hypot(leftOuter.x - rightOuter.x, leftOuter.y - rightOuter.y) / eyeDist) * 5,
-                Math.abs(((leftBrow.y + rightBrow.y) / 2) - ((lEye.y + rEye.y) / 2)) / eyeDist * 10,
-                (faceW / (faceH || 1)) * 5
-            ];
-            return [...spatial, ...depth, ...ratios];
         }
 
         // ── Enrollment ─────────────────────────────────────────────
@@ -768,9 +729,9 @@
                         const img = document.createElement('img');
                         img.src = URL.createObjectURL(uploadedFiles[i]);
                         await new Promise(r => { img.onload = r; });
-                        const faces = await detector.estimateFaces(img);
+                        const faces = await faceapi.detectAllFaces(img).withFaceLandmarks().withFaceDescriptors();
                         if (faces && faces.length > 0) {
-                            allEmbeddings.push(extractEmbedding(faces));
+                            allEmbeddings.push(Array.from(faces[0].descriptor));
                         }
                     }
                     if (allEmbeddings.length === 0) {
@@ -787,13 +748,13 @@
                     }
 
                     const enrollTarget = (imgZoom > 1) ? getEnrollTarget() : previewImg;
-                    const faces = await detector.estimateFaces(enrollTarget);
+                    const faces = await faceapi.detectAllFaces(enrollTarget).withFaceLandmarks().withFaceDescriptors();
                     if (!faces || faces.length === 0) {
                         enrollBtn.disabled = false;
                         enrollBtn.innerText = 'Analyze & Authorize';
                         return alert('No face detected. Ensure the face is clearly visible and try again.');
                     }
-                    allEmbeddings.push(extractEmbedding(faces));
+                    allEmbeddings.push(Array.from(faces[0].descriptor));
                 }
 
                 enrollBtn.innerText = 'Authorizing...';
