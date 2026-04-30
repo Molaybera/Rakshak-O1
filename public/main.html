@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rakshak 01 | Emergency Monitoring</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- AI Tracking Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <style>
+        :root {
+            --bg-deep: #0f172a;
+            --bg-card: rgba(30, 41, 59, 0.7);
+            --emerald-accent: #10b981;
+            --amber-accent: #f59e0b;
+            --rose-accent: #f43f5e;
+            --text-main: #f1f5f9;
+        }
+
+        body {
+            background-color: var(--bg-deep);
+            color: var(--text-main);
+            font-family: 'Inter', system-ui, sans-serif;
+            overflow-x: hidden;
+        }
+
+        .glass-panel {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+        }
+
+        .monitor-frame {
+            position: relative;
+            background: #000;
+            border-radius: 1rem;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border: 2px solid #1e293b;
+        }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Keep the video mirrored for the user */
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 20;
+            /* CHANGE 1: Remove transform: scaleX(-1) from here to fix mirrored text */
+        }
+
+        .scanning-line {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 2px;
+            background: linear-gradient(to right, transparent, var(--emerald-accent), transparent);
+            box-shadow: 0 0 15px var(--emerald-accent);
+            animation: scan 3s linear infinite;
+            display: none;
+            z-index: 10;
+        }
+
+        @keyframes scan {
+            0% { top: 0; }
+            100% { top: 100%; }
+        }
+
+        .alert-flash-red {
+            animation: flash-red 0.5s infinite alternate;
+        }
+
+        @keyframes flash-red {
+            from { box-shadow: inset 0 0 0px transparent; border-color: #1e293b; }
+            to { box-shadow: inset 0 0 60px rgba(244, 63, 94, 0.5); border-color: #f43f5e; }
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+    <header class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+        <div>
+            <h1 class="text-3xl font-black tracking-tighter text-white uppercase">RAKSHAK <span class="text-emerald-500">O1</span></h1>
+            <p class="text-slate-400 text-xs font-medium tracking-wide">OPERATIONAL INTELLIGENCE SYSTEM</p>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <div id="status-tag" class="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/50 border border-slate-700/50">
+                <span id="status-dot" class="w-2 h-2 rounded-full bg-slate-600"></span>
+                <span id="status-text" class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Offline</span>
+            </div>
+            <button id="main-toggle" onclick="toggleSystem()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-2.5 rounded-lg font-bold transition-all shadow-lg active:scale-95">
+                Initialize System
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        <div class="lg:col-span-8 space-y-6">
+            <div id="screen" class="monitor-frame aspect-video">
+                <div id="scanner" class="scanning-line"></div>
+                <video id="webcam" autoplay playsinline muted></video>
+                <canvas id="overlay"></canvas>
+                
+                <div id="placeholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 z-30 transition-opacity duration-500">
+                    <div class="w-12 h-12 border-4 border-slate-800 border-t-emerald-500 rounded-full animate-spin mb-4 hidden" id="cam-loader"></div>
+                    <p id="placeholder-msg" class="text-slate-500 font-bold tracking-tighter text-xl text-center px-4 uppercase">System Initialization Required</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="glass-panel p-4">
+                    <p class="text-slate-500 text-[10px] uppercase font-bold tracking-widest mb-1">Session Uptime</p>
+                    <h3 id="timer" class="text-2xl font-mono font-bold text-white">00:00:00</h3>
+                </div>
+                <div class="glass-panel p-4">
+                    <p class="text-slate-500 text-[10px] uppercase font-bold tracking-widest mb-1">Detections</p>
+                    <h3 id="count" class="text-2xl font-mono font-bold text-emerald-400">0</h3>
+                </div>
+                <div class="glass-panel p-4 flex flex-col justify-center">
+                    <p class="text-slate-500 text-[10px] uppercase font-bold tracking-widest mb-1">Alert Engine</p>
+                    <div class="flex items-center gap-2 mt-1">
+                        <div id="alert-status-dot" class="w-2 h-2 rounded-full bg-slate-600"></div>
+                        <span id="alert-status-text" class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Standby</span>
+                    </div>
+                </div>
+                <div class="flex flex-col gap-2">
+                    <button id="btn-intrusion" onclick="triggerAlert('Intrusion')" class="hidden bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-500/30 py-2 rounded font-bold text-[10px] uppercase transition-all">Test Intrusion</button>
+                    <button id="btn-fire" onclick="triggerAlert('Fire')" class="hidden bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 border border-amber-500/30 py-2 rounded font-bold text-[10px] uppercase transition-all">Test Fire</button>
+                </div>
+            </div>
+        </div>
+
+        <aside class="lg:col-span-4 flex flex-col">
+            <div class="glass-panel flex flex-col h-[500px] lg:h-[calc(100vh-250px)] overflow-hidden">
+                <div class="p-4 border-b border-white/5 flex justify-between items-center">
+                    <h3 class="text-xs font-bold uppercase tracking-widest text-slate-300">Operational Logs</h3>
+                    <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                </div>
+                <div id="logs" class="flex-grow overflow-y-auto p-4 space-y-3">
+                    <div class="text-[11px] text-slate-500 italic text-center py-10">Waiting for logs...</div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <script>
+        let active = false;
+        let detections = 0;
+        let seconds = 0;
+        let timerInterval;
+        let model = null;
+        let detectionInterval = null;
+
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('overlay');
+        const ctx = canvas.getContext('2d');
+
+        async function toggleSystem() {
+            const btn = document.getElementById('main-toggle');
+            const placeholder = document.getElementById('placeholder');
+            const loader = document.getElementById('cam-loader');
+            const placeholderMsg = document.getElementById('placeholder-msg');
+
+            if (!active) {
+                btn.disabled = true;
+                loader.classList.remove('hidden');
+                placeholderMsg.innerText = "ACCESSING VIDEO FEED...";
+
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } 
+                    });
+                    video.srcObject = stream;
+                    
+                    video.onloadedmetadata = () => {
+                        active = true;
+                        placeholder.style.opacity = '0';
+                        setTimeout(() => placeholder.classList.add('hidden'), 500);
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        btn.disabled = false;
+                        btn.innerHTML = "Stop Monitoring";
+                        btn.classList.replace('bg-emerald-600', 'bg-slate-700');
+                        document.getElementById('status-dot').classList.replace('bg-slate-600', 'bg-emerald-500');
+                        document.getElementById('status-text').innerHTML = "Monitoring Active";
+                        document.getElementById('status-text').classList.replace('text-slate-500', 'text-emerald-400');
+                        document.getElementById('scanner').style.display = 'block';
+                        document.getElementById('btn-intrusion').classList.remove('hidden');
+                        document.getElementById('btn-fire').classList.remove('hidden');
+
+                        startTimer();
+                        addLog("Camera stream online. Tracking protocols active.", "system");
+
+                        loadAIModel();
+                    };
+
+                } catch (err) {
+                    console.error(err);
+                    placeholderMsg.innerText = "ERROR: CAMERA ACCESS DENIED";
+                    loader.classList.add('hidden');
+                    btn.disabled = false;
+                }
+            } else {
+                location.reload();
+            }
+        }
+
+        async function loadAIModel() {
+            addLog("Initializing AI Tracking Engine...", "system");
+            try {
+                if (!model) {
+                    model = await cocoSsd.load();
+                }
+                addLog("AI Engine synchronized. Object tracking enabled.", "system");
+                startDetectionLoop();
+            } catch (e) {
+                addLog("AI Engine failure.", "system");
+            }
+        }
+
+        function startDetectionLoop() {
+            detectionInterval = setInterval(async () => {
+                if (!active || !model) return;
+                
+                const predictions = await model.detect(video);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                predictions.forEach(p => {
+                    if (p.class === 'person' && p.score > 0.6) {
+                        drawDetection(p);
+                    }
+                });
+            }, 600);
+        }
+
+        function drawDetection(p) {
+            const [x, y, w, h] = p.bbox;
+            
+            const visualX = canvas.width - x - w;
+ 
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(visualX, y, w, h);
+            
+            // LARGER LABEL FOR READABILITY (28px)
+            ctx.fillStyle = '#10b981';
+            const label = `PERSON: ${Math.round(p.score * 100)}%`;
+            ctx.font = 'bold 28px Inter'; 
+            const textWidth = ctx.measureText(label).width;
+            
+            ctx.fillRect(visualX, y > 40 ? y - 40 : 0, textWidth + 15, 40);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(label, visualX + 8, y > 40 ? y - 10 : 30);
+        }
+
+        async function triggerAlert(type) {
+            if (!active) return;
+            detections++;
+            document.getElementById('count').innerHTML = detections;
+            const screen = document.getElementById('screen');
+            const statusDot = document.getElementById('alert-status-dot');
+            const statusText = document.getElementById('alert-status-text');
+            
+            statusDot.className = "w-2 h-2 rounded-full bg-rose-500 animate-pulse";
+            statusText.innerText = "Transmitting...";
+            screen.classList.add('alert-flash-red');
+            setTimeout(() => screen.classList.remove('alert-flash-red'), 2000);
+
+            addLog(`ALERT: ${type.toUpperCase()} detection triggered!`, type.toLowerCase());
+
+            try {
+                const response = await fetch('/api/alerts/trigger', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type, timestamp: new Date().toLocaleTimeString() })
+                });
+                const result = await response.json();
+                statusDot.className = "w-2 h-2 rounded-full bg-emerald-500";
+                statusText.innerText = "Call Success";
+                setTimeout(() => {
+                    statusDot.className = "w-2 h-2 rounded-full bg-slate-600";
+                    statusText.innerText = "Standby";
+                }, 3000);
+            } catch (err) {
+                statusDot.className = "w-2 h-2 rounded-full bg-rose-600";
+                statusText.innerText = "Sync Error";
+            }
+        }
+
+        function addLog(msg, type) {
+            const container = document.getElementById('logs');
+            if (container.innerText.includes("Waiting")) container.innerHTML = '';
+            const entry = document.createElement('div');
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const colors = { system: 'border-emerald-500/50', intrusion: 'border-rose-500', fire: 'border-amber-500' };
+            entry.className = `p-3 border-l-4 rounded bg-slate-800/40 text-[10px] animate-in fade-in slide-in-from-right-2 ${colors[type] || colors.system}`;
+            entry.innerHTML = `<div class="flex justify-between mb-1 text-slate-500 font-bold"><span>${type.toUpperCase()}</span><span>${time}</span></div><div class="text-slate-200">${msg}</div>`;
+            container.prepend(entry);
+        }
+
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                seconds++;
+                let hrs = Math.floor(seconds / 3600);
+                let mins = Math.floor((seconds - (hrs * 3600)) / 60);
+                let secs = seconds % 60;
+                document.getElementById('timer').innerHTML = `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            }, 1000);
+        }
+    </script>
+</body>
+</html>
