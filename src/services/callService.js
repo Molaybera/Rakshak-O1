@@ -2,12 +2,11 @@
  * This service handles the logic for triggering automated voice alerts.
  */
 
-// API credentials for Twilio
+// API credentials for Twilio)
 const CALL_CONFIG = {
     provider: 'Twilio (Simulation Mode)',
     retryLimit: 3
 };
-
 
 /**
  * Triggers a voice call simulation based on the alert type
