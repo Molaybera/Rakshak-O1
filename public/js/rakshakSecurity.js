@@ -182,7 +182,7 @@ const RakshakIdentity = {
     match(faces) {
         if (!faces || faces.length === 0 || this.profiles.length === 0) return null;
         if (!faces[0].descriptor) return null;
-        
+
         const liveVec = faces[0].descriptor;
 
         let best = null, bestDist = Infinity, secondDist = Infinity;
@@ -195,7 +195,7 @@ const RakshakIdentity = {
                 allEmbeddings = [user.faceEmbedding];
             }
             if (allEmbeddings.length === 0) return;
-            
+
             // Skip if this is a legacy 1412D embedding to prevent crash
             if (allEmbeddings[0].length > 128) return;
 
@@ -247,10 +247,13 @@ const RakshakIdentity = {
 const RakshakSecurity = {
     lastCount: 0,
     alertCooldown: 0,
+    unknownFrames: 0,
 
     // Draw face bounding boxes from face-api.js results
     drawFaceBox(ctx, canvas, faces, matchedUser, livenessResult) {
         let personCount = 0;
+        let hasUnknown = false;
+        let hasSpoof = false;
 
         faces.forEach(face => {
             personCount++;
@@ -309,27 +312,38 @@ const RakshakSecurity = {
             ctx.roundRect(x - 1, labelY - 16, textW + padX * 2, 20 + padY, 4);
             ctx.fill();
             ctx.fillStyle = '#fff';
-            ctx.fillText(label, x + padX - 1, labelY);
+            ctx.save();
+            ctx.translate(x + padX - 1 + textW, labelY);
+            ctx.scale(-1, 1);
+            ctx.fillText(label, 0, 0);
+            ctx.restore();
 
             // Update identity status bar
             if (isSpoof) {
                 document.getElementById('identity-val').innerText = 'SPOOF';
                 document.getElementById('identity-val').className = 'text-[10px] font-black uppercase text-rose-500';
+                hasSpoof = true;
             } else if (matchedUser) {
                 document.getElementById('identity-val').innerText = 'AUTHORIZED';
                 document.getElementById('identity-val').className = 'text-[10px] font-black uppercase text-emerald-500';
             } else {
                 document.getElementById('identity-val').innerText = 'UNKNOWN';
                 document.getElementById('identity-val').className = 'text-[10px] font-black uppercase text-amber-500';
-            }
-
-            // Alert dispatch
-            if (isSpoof) {
-                this.dispatchAlert('spoofing', personCount);
-            } else if (!matchedUser) {
-                this.dispatchAlert('intrusion', personCount);
+                hasUnknown = true;
             }
         });
+
+        // Delay alert logic (approx 1.0 second at 30 FPS = 30 frames)
+        if (hasSpoof || hasUnknown) {
+            this.unknownFrames++;
+            if (this.unknownFrames > 10) {
+                if (hasSpoof) this.dispatchAlert('spoofing', personCount);
+                else this.dispatchAlert('intrusion', personCount);
+            }
+        } else {
+            // Reset counter if everyone is authorized or no faces are present
+            this.unknownFrames = 0;
+        }
 
         return personCount;
     },
