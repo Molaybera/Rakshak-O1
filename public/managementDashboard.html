@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rakshak O1 | Biometric Enrollment V3</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- AI Core Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
+
+    <style>
+        :root { --bg-deep: #0f172a; --emerald: #10b981; --slate-800: #1e293b; --rose: #f43f5e; }
+        body { background: var(--bg-deep); color: #f1f5f9; font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 1rem; }
+        .video-box { position: relative; width: 100%; max-width: 400px; border-radius: 1rem; overflow: hidden; border: 2px solid var(--slate-800); aspect-ratio: 4/3; background: #000; }
+        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .vision-tag { position: absolute; top: 12px; left: 12px; background: rgba(16, 185, 129, 0.2); color: var(--emerald); font-size: 8px; font-weight: 900; padding: 3px 8px; border-radius: 4px; z-index: 20; letter-spacing: 1px; }
+        .guide-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 180px; height: 240px; border: 2px dashed rgba(16, 185, 129, 0.3); border-radius: 50%; z-index: 10; }
+        .guide-circle.active { border-color: var(--emerald); border-style: solid; box-shadow: 0 0 30px rgba(16, 185, 129, 0.1); }
+    </style>
+</head>
+<body class="p-6 flex flex-col items-center">
+
+    <header class="w-full max-w-4xl flex justify-between items-center mb-10">
+        <div>
+            <h1 class="text-2xl font-black uppercase tracking-tight">RAKSHAK <span class="text-emerald-500">O1</span></h1>
+            <p class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-1">Biometric Enrollment V3 (High Compatibility)</p>
+        </div>
+        <a href="/" class="text-[10px] font-bold uppercase text-slate-400 border border-slate-700 px-4 py-2 rounded-lg transition-colors hover:bg-slate-800">
+            Monitor Dashboard
+        </a>
+    </header>
+
+    <main class="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-8">
+        
+        <!-- Enrollment Form -->
+        <section class="glass p-8 flex flex-col items-center">
+            <h2 class="text-lg font-bold mb-6">Authorize Identity</h2>
+            
+            <div class="video-box mb-6">
+                <div class="vision-tag">AI VISION BOOST ACTIVE</div>
+                <video id="webcam" autoplay playsinline muted></video>
+                <canvas id="overlay"></canvas>
+                <div class="guide-circle" id="guide"></div>
+                
+                <div id="loader" class="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center z-50">
+                    <div class="w-6 h-6 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mb-3"></div>
+                    <p id="loader-text" class="text-[9px] font-bold text-emerald-500 uppercase tracking-widest text-center px-4">Initializing Systems...</p>
+                </div>
+            </div>
+
+            <div class="w-full space-y-4">
+                <input type="text" id="userName" placeholder="Personnel Full Name" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3.5 text-sm focus:border-emerald-500 outline-none transition-all font-medium">
+                <button id="enrollBtn" onclick="enrollUser()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-lg active:scale-95 transition-all disabled:opacity-50 shadow-lg shadow-emerald-900/20">
+                    Capture & Authorize
+                </button>
+            </div>
+        </section>
+
+        <!-- Personnel List -->
+        <section class="glass p-8 flex flex-col">
+            <h2 class="text-lg font-bold mb-6 flex justify-between items-center">
+                Authorized Personnel
+                <span id="user-count" class="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-400">0</span>
+            </h2>
+            <div id="userList" class="space-y-3 overflow-y-auto max-h-[400px] pr-2">
+                <div class="text-slate-600 text-xs italic text-center py-10">Checking registry...</div>
+            </div>
+        </section>
+
+    </main>
+
+    <canvas id="boostCanvas" style="display:none;"></canvas>
+
+    <script>
+        let detector;
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('overlay');
+        const boostCanvas = document.getElementById('boostCanvas');
+        const bCtx = boostCanvas.getContext('2d');
+        const ctx = canvas.getContext('2d');
+        const guide = document.getElementById('guide');
+        const loaderText = document.getElementById('loader-text');
+
+        async function init() {
+            try {
+                // 1. START CAMERA FIRST (Don't let AI load block the camera view)
+                loaderText.innerText = "Opening Camera...";
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 640, height: 480 } 
+                });
+                video.srcObject = stream;
+                
+                // Force play for mobile/strict browsers
+                await video.play();
+
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth; 
+                    canvas.height = video.videoHeight;
+                    boostCanvas.width = video.videoWidth; 
+                    boostCanvas.height = video.videoHeight;
+                };
+
+                // 2. INITIALIZE TENSORFLOW
+                loaderText.innerText = "Initializing AI Engine...";
+                try {
+                    await tf.setBackend('webgl');
+                } catch (e) {
+                    console.warn("WebGL not supported, falling back to CPU");
+                    await tf.setBackend('cpu');
+                }
+                await tf.ready();
+                
+                // 3. LOAD DETECTOR
+                loaderText.innerText = "Loading Biometric Model...";
+                detector = await faceLandmarksDetection.createDetector(
+                    faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh, 
+                    { runtime: 'tfjs', refineLandmarks: true }
+                );
+
+                // 4. READY
+                document.getElementById('loader').classList.add('hidden');
+                drawLoop();
+
+            } catch (err) {
+                console.error("Init Error:", err);
+                document.getElementById('loader').innerHTML = `
+                    <div class="text-center px-8">
+                        <p class="text-rose-500 font-bold text-xs uppercase mb-2">Access Error</p>
+                        <p class="text-[10px] text-slate-500 leading-relaxed mb-4">${err.message}</p>
+                        <button onclick="location.reload()" class="bg-emerald-600 px-4 py-2 rounded text-[10px] font-bold">RETRY SYSTEM</button>
+                    </div>`;
+            }
+        }
+
+        function getBoostedFrame() {
+            bCtx.filter = 'brightness(1.6) contrast(1.3) saturate(1.1)';
+            bCtx.drawImage(video, 0, 0);
+            bCtx.filter = 'none';
+            return boostCanvas;
+        }
+
+        async function drawLoop() {
+            if (!detector) return;
+            try {
+                const faces = await detector.estimateFaces(getBoostedFrame());
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                if (faces && faces.length > 0) {
+                    guide.classList.add('active');
+                    const nose = faces[0].keypoints.find(k => k.name === 'noseTip');
+                    if (nose) {
+                        ctx.beginPath();
+                        ctx.arc(canvas.width - nose.x, nose.y, 40, 0, 2 * Math.PI);
+                        ctx.strokeStyle = '#10b981';
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+                } else {
+                    guide.classList.remove('active');
+                }
+            } catch (e) {
+                console.warn("Frame detection skipped");
+            }
+            requestAnimationFrame(drawLoop);
+        }
+
+        async function enrollUser() {
+            const nameInput = document.getElementById('userName');
+            const name = nameInput.value.trim();
+            const btn = document.getElementById('enrollBtn');
+            if (!name) return alert("Please enter personnel name.");
+            if (!detector) return alert("AI Engine not ready yet.");
+
+            btn.disabled = true;
+            btn.innerText = "Analyzing Landmarks...";
+
+            const faces = await detector.estimateFaces(getBoostedFrame());
+            
+            if (!faces || faces.length === 0) {
+                btn.disabled = false;
+                btn.innerText = "Capture & Authorize";
+                return alert("No face detected. Look directly at the camera and ensure you are in the light.");
+            }
+
+            const points = faces[0].keypoints;
+            const nose = points.find(k => k.name === 'noseTip');
+            const lEye = points.find(k => k.name === 'leftEye');
+            const rEye = points.find(k => k.name === 'rightEye');
+
+            const eyeDist = Math.hypot(lEye.x - rEye.x, lEye.y - rEye.y);
+            const normalizedEmbedding = points.map(kp => [
+                (kp.x - nose.x) / eyeDist,
+                (kp.y - nose.y) / eyeDist
+            ]).flat();
+
+            try {
+                const res = await fetch('/api/users/enroll', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, faceEmbedding: normalizedEmbedding })
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    nameInput.value = '';
+                    fetchUsers();
+                    alert(`Access granted. ${name} is now authorized.`);
+                }
+            } catch (err) {
+                alert("Database sync failed. Check server connection.");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Capture & Authorize";
+            }
+        }
+
+        async function fetchUsers() {
+            const list = document.getElementById('userList');
+            const countBadge = document.getElementById('user-count');
+            try {
+                const res = await fetch('/api/users/list');
+                const users = await res.json();
+                list.innerHTML = '';
+                countBadge.innerText = users.length;
+                
+                if (users.length === 0) {
+                    list.innerHTML = '<div class="text-slate-600 text-xs italic text-center py-10">No authorized profiles found.</div>';
+                    return;
+                }
+
+                users.forEach(u => {
+                    const d = document.createElement('div');
+                    d.className = "bg-slate-800/40 p-4 rounded-xl border border-white/5 flex justify-between items-center animate-in fade-in";
+                    d.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 text-[10px] font-bold border border-emerald-500/20">
+                                ${u.name.charAt(0).toUpperCase()}
+                            </div>
+                            <span class="text-sm font-semibold">${u.name}</span>
+                        </div>
+                        <span class="text-[7px] bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-full border border-emerald-500/20 uppercase font-black tracking-widest">Authorized</span>
+                    `;
+                    list.appendChild(d);
+                });
+            } catch (e) {
+                list.innerHTML = '<div class="text-rose-500 text-[10px] text-center italic py-4">Database Offline</div>';
+            }
+        }
+
+        window.onload = init;
+        fetchUsers();
+    </script>
+</body>
+</html>

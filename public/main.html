@@ -3,320 +3,274 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rakshak 01 | Emergency Monitoring</title>
+    <title>Rakshak O1 | Strategic Monitor</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- AI Tracking Dependencies -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
     <style>
-        :root {
-            --bg-deep: #0f172a;
-            --bg-card: rgba(30, 41, 59, 0.7);
-            --emerald-accent: #10b981;
-            --amber-accent: #f59e0b;
-            --rose-accent: #f43f5e;
-            --text-main: #f1f5f9;
-        }
-
-        body {
-            background-color: var(--bg-deep);
-            color: var(--text-main);
-            font-family: 'Inter', system-ui, sans-serif;
-            overflow-x: hidden;
-        }
-
-        .glass-panel {
-            background: var(--bg-card);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 1rem;
-        }
-
-        .monitor-frame {
-            position: relative;
-            background: #000;
-            border-radius: 1rem;
-            overflow: hidden;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            border: 2px solid #1e293b;
-        }
-
-        #webcam {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transform: scaleX(-1); /* Keep the video mirrored for the user */
-        }
-
-        #overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 20;
-            /* CHANGE 1: Remove transform: scaleX(-1) from here to fix mirrored text */
-        }
-
-        .scanning-line {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 2px;
-            background: linear-gradient(to right, transparent, var(--emerald-accent), transparent);
-            box-shadow: 0 0 15px var(--emerald-accent);
-            animation: scan 3s linear infinite;
-            display: none;
-            z-index: 10;
-        }
-
-        @keyframes scan {
-            0% { top: 0; }
-            100% { top: 100%; }
-        }
-
-        .alert-flash-red {
-            animation: flash-red 0.5s infinite alternate;
-        }
-
-        @keyframes flash-red {
-            from { box-shadow: inset 0 0 0px transparent; border-color: #1e293b; }
-            to { box-shadow: inset 0 0 60px rgba(244, 63, 94, 0.5); border-color: #f43f5e; }
-        }
+        :root { --bg-deep: #0f172a; --emerald: #10b981; --rose: #f43f5e; --amber: #f59e0b; }
+        body { background: var(--bg-deep); color: #f1f5f9; font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 1rem; }
+        .monitor-frame { position: relative; background: #000; border-radius: 1rem; overflow: hidden; border: 2px solid #1e293b; }
+        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
+        .alert-active { animation: pulse-red 0.5s infinite alternate; }
+        @keyframes pulse-red { from { border-color: #1e293b; } to { border-color: var(--rose); box-shadow: 0 0 20px var(--rose); } }
     </style>
 </head>
-<body class="min-h-screen p-4 md:p-8">
+<body class="p-4 flex flex-col">
 
-    <header class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+    <header class="max-w-7xl mx-auto w-full flex justify-between items-center mb-6">
         <div>
-            <h1 class="text-3xl font-black tracking-tighter text-white uppercase">RAKSHAK <span class="text-emerald-500">O1</span></h1>
-            <p class="text-slate-400 text-xs font-medium tracking-wide">OPERATIONAL INTELLIGENCE SYSTEM</p>
-        </div>
-        
-        <div class="flex items-center gap-4">
-            <div id="status-tag" class="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/50 border border-slate-700/50">
-                <span id="status-dot" class="w-2 h-2 rounded-full bg-slate-600"></span>
-                <span id="status-text" class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Offline</span>
+            <h1 class="text-2xl font-black tracking-tighter uppercase leading-none">RAKSHAK <span class="text-emerald-500">O1</span></h1>
+            <div class="flex gap-4 mt-1">
+                <p class="text-slate-500 text-[9px] font-bold uppercase tracking-widest">Intelligence Terminal</p>
             </div>
-            <button id="main-toggle" onclick="toggleSystem()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-2.5 rounded-lg font-bold transition-all shadow-lg active:scale-95">
-                Initialize System
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700">
+                <a href="./managementDashboard.html" class="text-[9px] text-emerald-500 font-bold uppercase hover:underline">User Management</a>
+            </div>
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700">
+                <div id="status-dot" class="w-2 h-2 rounded-full bg-slate-600"></div>
+                <span id="status-text" class="text-[9px] font-bold uppercase text-slate-500">System Offline</span>
+            </div>
+            <button id="main-toggle" onclick="RakshakApp.toggle()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-bold text-sm transition-all active:scale-95">
+                Arm System
             </button>
         </div>
     </header>
 
-    <main class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        <div class="lg:col-span-8 space-y-6">
-            <div id="screen" class="monitor-frame aspect-video">
-                <div id="scanner" class="scanning-line"></div>
+    <main class="max-w-7xl mx-auto w-full flex-grow grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-hidden">
+        <div class="lg:col-span-8 flex flex-col gap-6 overflow-hidden">
+            <div id="screen" class="monitor-frame flex-grow relative">
                 <video id="webcam" autoplay playsinline muted></video>
                 <canvas id="overlay"></canvas>
-                
-                <div id="placeholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 z-30 transition-opacity duration-500">
-                    <div class="w-12 h-12 border-4 border-slate-800 border-t-emerald-500 rounded-full animate-spin mb-4 hidden" id="cam-loader"></div>
-                    <p id="placeholder-msg" class="text-slate-500 font-bold tracking-tighter text-xl text-center px-4 uppercase">System Initialization Required</p>
+                <div id="loader" class="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center z-30 transition-opacity">
+                    <div id="spinner" class="w-8 h-8 border-4 border-slate-800 border-t-emerald-500 rounded-full animate-spin mb-4 hidden"></div>
+                    <p id="loader-msg" class="text-slate-600 font-bold uppercase text-xs">Ready for Arming</p>
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="glass-panel p-4">
-                    <p class="text-slate-500 text-[10px] uppercase font-bold tracking-widest mb-1">Session Uptime</p>
-                    <h3 id="timer" class="text-2xl font-mono font-bold text-white">00:00:00</h3>
+            <div class="grid grid-cols-4 gap-4 h-24">
+                <div class="glass flex flex-col items-center justify-center">
+                    <span class="text-[9px] uppercase font-bold text-slate-500 mb-1">Live Count</span>
+                    <div class="text-2xl font-mono font-black text-emerald-400" id="count-val">0</div>
                 </div>
-                <div class="glass-panel p-4">
-                    <p class="text-slate-500 text-[10px] uppercase font-bold tracking-widest mb-1">Detections</p>
-                    <h3 id="count" class="text-2xl font-mono font-bold text-emerald-400">0</h3>
+                <div class="glass flex flex-col items-center justify-center">
+                    <span class="text-[9px] uppercase font-bold text-slate-500 mb-1">Activity Score</span>
+                    <div class="text-xl font-mono font-black" id="activity-val">0.00</div>
                 </div>
-                <div class="glass-panel p-4 flex flex-col justify-center">
-                    <p class="text-slate-500 text-[10px] uppercase font-bold tracking-widest mb-1">Alert Engine</p>
-                    <div class="flex items-center gap-2 mt-1">
-                        <div id="alert-status-dot" class="w-2 h-2 rounded-full bg-slate-600"></div>
-                        <span id="alert-status-text" class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Standby</span>
-                    </div>
+                <div class="glass flex flex-col items-center justify-center">
+                    <span class="text-[9px] uppercase font-bold text-slate-500 mb-1">Identity Status</span>
+                    <div class="text-[10px] font-black uppercase text-slate-500" id="identity-val">IDLE</div>
                 </div>
-                <div class="flex flex-col gap-2">
-                    <button id="btn-intrusion" onclick="triggerAlert('Intrusion')" class="hidden bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-500/30 py-2 rounded font-bold text-[10px] uppercase transition-all">Test Intrusion</button>
-                    <button id="btn-fire" onclick="triggerAlert('Fire')" class="hidden bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 border border-amber-500/30 py-2 rounded font-bold text-[10px] uppercase transition-all">Test Fire</button>
+                <div class="glass flex flex-col items-center justify-center">
+                    <span class="text-[9px] uppercase font-bold text-slate-500 mb-1">Fire Threat</span>
+                    <div class="text-xl font-mono font-black text-slate-400" id="fire-val">0%</div>
                 </div>
             </div>
         </div>
 
-        <aside class="lg:col-span-4 flex flex-col">
-            <div class="glass-panel flex flex-col h-[500px] lg:h-[calc(100vh-250px)] overflow-hidden">
-                <div class="p-4 border-b border-white/5 flex justify-between items-center">
-                    <h3 class="text-xs font-bold uppercase tracking-widest text-slate-300">Operational Logs</h3>
-                    <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                </div>
-                <div id="logs" class="flex-grow overflow-y-auto p-4 space-y-3">
-                    <div class="text-[11px] text-slate-500 italic text-center py-10">Waiting for logs...</div>
-                </div>
+        <aside class="lg:col-span-4 glass flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-white/5 font-bold text-[10px] uppercase text-slate-400">Security Events</div>
+            <div id="logs" class="flex-grow overflow-y-auto p-4 space-y-3 font-mono text-[10px]">
+                <div class="text-slate-600 italic">Arm system to begin tracking.</div>
             </div>
         </aside>
     </main>
 
+    <canvas id="boostCanvas" style="display:none;"></canvas>
+
     <script>
-        let active = false;
-        let detections = 0;
-        let seconds = 0;
-        let timerInterval;
-        let model = null;
-        let detectionInterval = null;
+        const RakshakApp = {
+            active: false,
+            models: { coco: null, face: null },
+            ui: {
+                video: document.getElementById('webcam'),
+                canvas: document.getElementById('overlay'),
+                boostCanvas: document.getElementById('boostCanvas'),
+                ctx: document.getElementById('overlay').getContext('2d'),
+                bCtx: document.getElementById('boostCanvas').getContext('2d'),
+                loader: document.getElementById('loader'),
+                spinner: document.getElementById('spinner'),
+                pMsg: document.getElementById('loader-msg'),
+                toggleBtn: document.getElementById('main-toggle')
+            },
 
-        const video = document.getElementById('webcam');
-        const canvas = document.getElementById('overlay');
-        const ctx = canvas.getContext('2d');
-
-        async function toggleSystem() {
-            const btn = document.getElementById('main-toggle');
-            const placeholder = document.getElementById('placeholder');
-            const loader = document.getElementById('cam-loader');
-            const placeholderMsg = document.getElementById('placeholder-msg');
-
-            if (!active) {
-                btn.disabled = true;
-                loader.classList.remove('hidden');
-                placeholderMsg.innerText = "ACCESSING VIDEO FEED...";
-
+            async toggle() {
+                if (this.active) { location.reload(); return; }
+                this.ui.toggleBtn.disabled = true;
+                this.ui.spinner.classList.remove('hidden');
+                this.ui.pMsg.innerText = "Syncing Biometric Database...";
+                
                 try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } 
-                    });
-                    video.srcObject = stream;
+                    await RakshakIdentity.init();
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                    this.ui.video.srcObject = stream;
+                    await this.ui.video.play();
+
+                    this.ui.pMsg.innerText = "Loading AI Core...";
+                    this.models.coco = await cocoSsd.load();
+                    this.models.face = await faceLandmarksDetection.createDetector(
+                        faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
+                        { runtime: 'tfjs', refineLandmarks: true }
+                    );
+
+                    this.ui.canvas.width = this.ui.video.videoWidth;
+                    this.ui.canvas.height = this.ui.video.videoHeight;
+                    this.ui.boostCanvas.width = this.ui.video.videoWidth;
+                    this.ui.boostCanvas.height = this.ui.video.videoHeight;
                     
-                    video.onloadedmetadata = () => {
-                        active = true;
-                        placeholder.style.opacity = '0';
-                        setTimeout(() => placeholder.classList.add('hidden'), 500);
-                        canvas.width = video.videoWidth;
-                        canvas.height = video.videoHeight;
-                        btn.disabled = false;
-                        btn.innerHTML = "Stop Monitoring";
-                        btn.classList.replace('bg-emerald-600', 'bg-slate-700');
-                        document.getElementById('status-dot').classList.replace('bg-slate-600', 'bg-emerald-500');
-                        document.getElementById('status-text').innerHTML = "Monitoring Active";
-                        document.getElementById('status-text').classList.replace('text-slate-500', 'text-emerald-400');
-                        document.getElementById('scanner').style.display = 'block';
-                        document.getElementById('btn-intrusion').classList.remove('hidden');
-                        document.getElementById('btn-fire').classList.remove('hidden');
+                    this.active = true;
+                    this.ui.loader.classList.add('hidden');
+                    this.ui.toggleBtn.disabled = false;
+                    this.ui.toggleBtn.innerText = "Disarm System";
+                    document.getElementById('status-text').innerText = "SYSTEM LIVE";
+                    document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+                    
+                    this.loop();
+                } catch (err) { alert(err.message); }
+            },
 
-                        startTimer();
-                        addLog("Camera stream online. Tracking protocols active.", "system");
+            async loop() {
+                if (!this.active) return;
 
-                        loadAIModel();
-                    };
+                // Vision Boost preprocessing
+                this.ui.bCtx.filter = 'brightness(1.5) contrast(1.2)';
+                this.ui.bCtx.drawImage(this.ui.video, 0, 0);
+                this.ui.bCtx.filter = 'none';
 
-                } catch (err) {
-                    console.error(err);
-                    placeholderMsg.innerText = "ERROR: CAMERA ACCESS DENIED";
-                    loader.classList.add('hidden');
-                    btn.disabled = false;
-                }
-            } else {
-                location.reload();
-            }
-        }
+                const [objects, faces] = await Promise.all([
+                    this.models.coco.detect(this.ui.video),
+                    this.models.face.estimateFaces(this.ui.boostCanvas)
+                ]);
 
-        async function loadAIModel() {
-            addLog("Initializing AI Tracking Engine...", "system");
-            try {
-                if (!model) {
-                    model = await cocoSsd.load();
-                }
-                addLog("AI Engine synchronized. Object tracking enabled.", "system");
-                startDetectionLoop();
-            } catch (e) {
-                addLog("AI Engine failure.", "system");
-            }
-        }
-
-        function startDetectionLoop() {
-            detectionInterval = setInterval(async () => {
-                if (!active || !model) return;
+                this.ui.ctx.clearRect(0, 0, this.ui.canvas.width, this.ui.canvas.height);
                 
-                const predictions = await model.detect(video);
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                
-                predictions.forEach(p => {
-                    if (p.class === 'person' && p.score > 0.6) {
-                        drawDetection(p);
+                const activity = RakshakActivity.process(faces);
+                const matchedName = RakshakIdentity.match(faces);
+                RakshakSecurity.process(objects, activity, matchedName, this.ui.ctx, this.ui.canvas);
+
+                requestAnimationFrame(() => this.loop());
+            }
+        };
+
+        const RakshakActivity = {
+            lastPoints: null,
+            buffer: [],
+            process(faces) {
+                if (!faces || faces.length === 0) return 0;
+                const points = faces[0].keypoints;
+                let jitter = 0;
+                if (this.lastPoints) {
+                    points.forEach((p, i) => jitter += Math.abs(p.x - this.lastPoints[i].x) + Math.abs(p.y - this.lastPoints[i].y));
+                }
+                this.lastPoints = JSON.parse(JSON.stringify(points));
+                this.buffer.push(jitter);
+                if (this.buffer.length > 20) this.buffer.shift();
+                const score = Math.min((this.buffer.reduce((a,b)=>a+b, 0)/this.buffer.length)/100, 1.0);
+                document.getElementById('activity-val').innerText = score.toFixed(2);
+                return score;
+            }
+        };
+
+        const RakshakIdentity = {
+            profiles: [],
+            async init() {
+                try {
+                    const res = await fetch('/api/users/list');
+                    this.profiles = await res.json();
+                } catch (e) { console.error("Identity sync error"); }
+            },
+            match(faces) {
+                if (faces.length === 0 || this.profiles.length === 0) return null;
+                const points = faces[0].keypoints;
+                const nose = points.find(k => k.name === 'noseTip');
+                const lEye = points.find(k => k.name === 'leftEye');
+                const rEye = points.find(k => k.name === 'rightEye');
+                if (!nose || !lEye || !rEye) return null;
+
+                const eyeDist = Math.hypot(lEye.x - rEye.x, lEye.y - rEye.y);
+                const liveNorm = points.map(kp => [(kp.x - nose.x)/eyeDist, (kp.y - nose.y)/eyeDist]).flat();
+
+                let best = null; let minD = 1000;
+                this.profiles.forEach(user => {
+                    if (!user.faceEmbedding) return;
+                    let d = 0;
+                    for (let i=0; i<200; i++) d += Math.abs(liveNorm[i] - user.faceEmbedding[i]);
+                    if (d < minD) { minD = d; best = user; }
+                });
+                return minD < 18 ? best.name : null;
+            }
+        };
+
+        const RakshakSecurity = {
+            lastCount: 0, alertCooldown: 0,
+            process(objects, activity, name, ctx, canvas) {
+                let currentCount = 0;
+                objects.forEach(obj => {
+                    if (obj.class === 'person') {
+                        currentCount++;
+                        const [x, y, w, h] = obj.bbox;
+                        const vX = canvas.width - x - w;
+                        const isSpoof = (activity < 0.12 && RakshakActivity.buffer.length > 15);
+                        
+                        let label = name ? `SECURE: ${name.toUpperCase()}` : "UNKNOWN PERSON";
+                        let color = name ? "#10b981" : "#f59e0b";
+                        if (isSpoof) { label = "SPOOF DETECTED"; color = "#f43f5e"; }
+
+                        ctx.strokeStyle = color; ctx.lineWidth = 6; ctx.strokeRect(vX, y, w, h);
+                        ctx.fillStyle = color; ctx.font = "bold 22px Inter"; ctx.fillText(label, vX, y > 30 ? y - 10 : 30);
+                        
+                        document.getElementById('identity-val').innerText = name ? "AUTHORIZED" : "UNKNOWN";
+                        document.getElementById('identity-val').className = `text-[10px] font-black uppercase ${name ? 'text-emerald-500' : 'text-amber-500'}`;
+
+                        if (isSpoof || (!name && currentCount > this.lastCount)) {
+                            this.dispatchAlert(isSpoof ? 'spoofing' : 'intrusion', currentCount);
+                        }
                     }
                 });
-            }, 600);
-        }
+                document.getElementById('count-val').innerText = currentCount;
+                this.lastCount = currentCount;
+            },
+            async dispatchAlert(type, count) {
+                const now = Date.now();
+                if (now - this.alertCooldown < 25000) return;
+                this.alertCooldown = now;
 
-        function drawDetection(p) {
-            const [x, y, w, h] = p.bbox;
-            
-            const visualX = canvas.width - x - w;
- 
-            ctx.strokeStyle = '#10b981';
-            ctx.lineWidth = 5;
-            ctx.strokeRect(visualX, y, w, h);
-            
-            // LARGER LABEL FOR READABILITY (28px)
-            ctx.fillStyle = '#10b981';
-            const label = `PERSON: ${Math.round(p.score * 100)}%`;
-            ctx.font = 'bold 28px Inter'; 
-            const textWidth = ctx.measureText(label).width;
-            
-            ctx.fillRect(visualX, y > 40 ? y - 40 : 0, textWidth + 15, 40);
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(label, visualX + 8, y > 40 ? y - 10 : 30);
-        }
+                const tempCanvas = document.createElement('canvas');
+                const tCtx = tempCanvas.getContext('2d');
+                tempCanvas.width = RakshakApp.ui.canvas.width;
+                tempCanvas.height = RakshakApp.ui.canvas.height;
+                tCtx.drawImage(RakshakApp.ui.boostCanvas, 0, 0);
+                tCtx.drawImage(RakshakApp.ui.canvas, 0, 0);
+                const snapshot = tempCanvas.toDataURL('image/jpeg', 0.7);
 
-        async function triggerAlert(type) {
-            if (!active) return;
-            detections++;
-            document.getElementById('count').innerHTML = detections;
-            const screen = document.getElementById('screen');
-            const statusDot = document.getElementById('alert-status-dot');
-            const statusText = document.getElementById('alert-status-text');
-            
-            statusDot.className = "w-2 h-2 rounded-full bg-rose-500 animate-pulse";
-            statusText.innerText = "Transmitting...";
-            screen.classList.add('alert-flash-red');
-            setTimeout(() => screen.classList.remove('alert-flash-red'), 2000);
-
-            addLog(`ALERT: ${type.toUpperCase()} detection triggered!`, type.toLowerCase());
-
-            try {
-                const response = await fetch('/api/alerts/trigger', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type, timestamp: new Date().toLocaleTimeString() })
-                });
-                const result = await response.json();
-                statusDot.className = "w-2 h-2 rounded-full bg-emerald-500";
-                statusText.innerText = "Call Success";
-                setTimeout(() => {
-                    statusDot.className = "w-2 h-2 rounded-full bg-slate-600";
-                    statusText.innerText = "Standby";
-                }, 3000);
-            } catch (err) {
-                statusDot.className = "w-2 h-2 rounded-full bg-rose-600";
-                statusText.innerText = "Sync Error";
+                try {
+                    await fetch('/api/alerts/trigger', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type, personCount: count, image: snapshot })
+                    });
+                    RakshakLogger.add(`ALERT: ${type.toUpperCase()} recorded. Email sent.`, type);
+                    document.getElementById('screen').classList.add('alert-active');
+                    setTimeout(() => document.getElementById('screen').classList.remove('alert-active'), 5000);
+                } catch (e) { console.error("Alert Error"); }
             }
-        }
+        };
 
-        function addLog(msg, type) {
-            const container = document.getElementById('logs');
-            if (container.innerText.includes("Waiting")) container.innerHTML = '';
-            const entry = document.createElement('div');
-            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const colors = { system: 'border-emerald-500/50', intrusion: 'border-rose-500', fire: 'border-amber-500' };
-            entry.className = `p-3 border-l-4 rounded bg-slate-800/40 text-[10px] animate-in fade-in slide-in-from-right-2 ${colors[type] || colors.system}`;
-            entry.innerHTML = `<div class="flex justify-between mb-1 text-slate-500 font-bold"><span>${type.toUpperCase()}</span><span>${time}</span></div><div class="text-slate-200">${msg}</div>`;
-            container.prepend(entry);
-        }
-
-        function startTimer() {
-            timerInterval = setInterval(() => {
-                seconds++;
-                let hrs = Math.floor(seconds / 3600);
-                let mins = Math.floor((seconds - (hrs * 3600)) / 60);
-                let secs = seconds % 60;
-                document.getElementById('timer').innerHTML = `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-            }, 1000);
-        }
+        const RakshakLogger = {
+            add(msg, type) {
+                const logs = document.getElementById('logs');
+                if (logs.innerText.includes("Arm system")) logs.innerHTML = '';
+                const div = document.createElement('div');
+                div.className = `p-2 border-l-4 bg-white/5 border-${type === 'system' ? 'emerald' : 'rose'}-500`;
+                div.innerHTML = `<span class="text-slate-500">[${new Date().toLocaleTimeString()}]</span><br>${msg}`;
+                logs.prepend(div);
+            }
+        };
     </script>
 </body>
 </html>
