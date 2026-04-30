@@ -6,6 +6,7 @@ const alertRoutes = require('./src/routes/alert');
 const { connectDB } = require('./src/config/db');
 const userRoutes = require('./src/routes/user');
 
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 

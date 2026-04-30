@@ -12,4 +12,7 @@ router.post('/enroll', userController.enrollUser);
 // GET /api/users/list - Fetch all authorized users
 router.get('/list', userController.listUsers);
 
+// DELETE /api/users/:id - Remove a user by MongoDB ID
+router.delete('/:id', userController.deleteUser);
+
 module.exports = router;

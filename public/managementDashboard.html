@@ -1,72 +1,347 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rakshak O1 | Biometric Enrollment V3</title>
+    <title>Rakshak O1 | Biometric Enrollment</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- AI Core Dependencies -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
-
     <style>
-        :root { --bg-deep: #0f172a; --emerald: #10b981; --slate-800: #1e293b; --rose: #f43f5e; }
-        body { background: var(--bg-deep); color: #f1f5f9; font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
-        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 1rem; }
-        .video-box { position: relative; width: 100%; max-width: 400px; border-radius: 1rem; overflow: hidden; border: 2px solid var(--slate-800); aspect-ratio: 4/3; background: #000; }
-        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-        .vision-tag { position: absolute; top: 12px; left: 12px; background: rgba(16, 185, 129, 0.2); color: var(--emerald); font-size: 8px; font-weight: 900; padding: 3px 8px; border-radius: 4px; z-index: 20; letter-spacing: 1px; }
-        .guide-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 180px; height: 240px; border: 2px dashed rgba(16, 185, 129, 0.3); border-radius: 50%; z-index: 10; }
-        .guide-circle.active { border-color: var(--emerald); border-style: solid; box-shadow: 0 0 30px rgba(16, 185, 129, 0.1); }
+        :root {
+            --bg-deep: #0f172a;
+            --emerald: #10b981;
+            --rose: #f43f5e;
+            --amber: #f59e0b;
+        }
+
+        body {
+            background: var(--bg-deep);
+            color: #f1f5f9;
+            font-family: 'Inter', system-ui, sans-serif;
+            min-height: 100vh;
+        }
+
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+        }
+
+        .video-box {
+            position: relative;
+            width: 100%;
+            max-width: 420px;
+            border-radius: 1rem;
+            overflow: hidden;
+            border: 2px solid #1e293b;
+            aspect-ratio: 4/3;
+            background: #000;
+            cursor: grab;
+        }
+
+        .video-box.dragging {
+            cursor: grabbing;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        /* previewImg uses transform for zoom/pan — no object-fit so we can control exactly */
+        #previewImg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform-origin: center center;
+            transition: none;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .guide-oval {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 160px;
+            height: 210px;
+            border: 2px dashed rgba(16, 185, 129, 0.3);
+            border-radius: 50%;
+            z-index: 10;
+            transition: all 0.3s;
+        }
+
+        .guide-oval.active {
+            border-color: var(--emerald);
+            border-style: solid;
+            box-shadow: 0 0 30px rgba(16, 185, 129, 0.15);
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-radius: 8px;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }
+
+        .tab-btn.active {
+            background: #10b981;
+            color: #fff;
+        }
+
+        .tab-btn.inactive {
+            background: transparent;
+            color: #64748b;
+        }
+
+        .tab-btn.inactive:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: #94a3b8;
+        }
+
+        input[type="file"]::file-selector-button {
+            background: #1e293b;
+            color: #94a3b8;
+            border: 1px solid #334155;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 10px;
+            text-transform: uppercase;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .face-badge {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 30;
+            font-size: 9px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            padding: 4px 12px;
+            border-radius: 99px;
+            text-transform: uppercase;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .badge-scanning {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.4);
+        }
+
+        .badge-detected {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        .badge-none {
+            background: rgba(244, 63, 94, 0.15);
+            color: #f43f5e;
+            border: 1px solid rgba(244, 63, 94, 0.3);
+        }
+
+        .vision-tag {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 8px;
+            font-weight: 900;
+            padding: 3px 8px;
+            border-radius: 4px;
+            z-index: 20;
+            letter-spacing: 1px;
+        }
+
+        /* Zoom controls */
+        #zoomControls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #zoomSlider {
+            -webkit-appearance: none;
+            flex: 1;
+            height: 4px;
+            background: #334155;
+            border-radius: 4px;
+            outline: none;
+        }
+
+        #zoomSlider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #10b981;
+            cursor: pointer;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(6px);
+            }
+
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease forwards;
+        }
     </style>
 </head>
+
 <body class="p-6 flex flex-col items-center">
 
     <header class="w-full max-w-4xl flex justify-between items-center mb-10">
         <div>
-            <h1 class="text-2xl font-black uppercase tracking-tight">RAKSHAK <span class="text-emerald-500">O1</span></h1>
-            <p class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-1">Biometric Enrollment V3 (High Compatibility)</p>
+            <h1 class="text-2xl font-black uppercase tracking-tight">RAKSHAK <span class="text-emerald-500">O1</span>
+            </h1>
+            <p class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-1">Biometric Enrollment —
+                Identity Management</p>
         </div>
-        <a href="/" class="text-[10px] font-bold uppercase text-slate-400 border border-slate-700 px-4 py-2 rounded-lg transition-colors hover:bg-slate-800">
-            Monitor Dashboard
+        <a href="/"
+            class="text-[10px] font-bold uppercase text-slate-400 border border-slate-700 px-4 py-2 rounded-lg transition-colors hover:bg-slate-800">
+            ← Monitor Dashboard
         </a>
     </header>
 
     <main class="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-8">
-        
-        <!-- Enrollment Form -->
+
+        <!-- ── Enrollment Panel ── -->
         <section class="glass p-8 flex flex-col items-center">
-            <h2 class="text-lg font-bold mb-6">Authorize Identity</h2>
-            
-            <div class="video-box mb-6">
-                <div class="vision-tag">AI VISION BOOST ACTIVE</div>
+            <h2 class="text-lg font-bold mb-1 text-center">Authorize Identity</h2>
+            <p class="text-slate-500 text-[10px] mb-5 text-center uppercase tracking-widest">Capture live or upload a
+                photo</p>
+
+            <!-- Mode Tabs -->
+            <div class="flex w-full gap-2 mb-5 bg-slate-800/60 p-1 rounded-xl border border-white/5">
+                <button id="tab-camera" class="tab-btn active" onclick="switchMode('camera')">📷 Live Camera</button>
+                <button id="tab-upload" class="tab-btn inactive" onclick="switchMode('upload')">🖼 Upload Photo</button>
+            </div>
+
+            <!-- Video/Preview Box -->
+            <div class="video-box mb-5" id="mediaContainer">
+                <div class="vision-tag bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" id="modeTag">
+                    LIVE CAMERA</div>
+
+                <!-- Live camera -->
                 <video id="webcam" autoplay playsinline muted></video>
+
+                <!-- Upload preview -->
+                <img id="previewImg" class="hidden" alt="Upload Preview"
+                    style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;">
+
+                <!-- Canvas overlay -->
                 <canvas id="overlay"></canvas>
-                <div class="guide-circle" id="guide"></div>
-                
-                <div id="loader" class="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center z-50">
-                    <div class="w-6 h-6 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mb-3"></div>
-                    <p id="loader-text" class="text-[9px] font-bold text-emerald-500 uppercase tracking-widest text-center px-4">Initializing Systems...</p>
+
+                <!-- Guide oval (camera mode only) -->
+                <div class="guide-oval" id="guide"></div>
+
+                <!-- Face status badge -->
+                <div class="face-badge badge-scanning" id="faceBadge">Scanning...</div>
+
+                <!-- Loading overlay -->
+                <div id="loader"
+                    class="absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center z-50">
+                    <div
+                        class="w-6 h-6 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mb-3">
+                    </div>
+                    <p id="loader-text"
+                        class="text-[9px] font-bold text-emerald-500 uppercase tracking-widest text-center px-4">
+                        Initializing Systems...</p>
                 </div>
             </div>
 
-            <div class="w-full space-y-4">
-                <input type="text" id="userName" placeholder="Personnel Full Name" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3.5 text-sm focus:border-emerald-500 outline-none transition-all font-medium">
-                <button id="enrollBtn" onclick="enrollUser()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-lg active:scale-95 transition-all disabled:opacity-50 shadow-lg shadow-emerald-900/20">
-                    Capture & Authorize
+            <!-- Upload file input + zoom controls (shown only in upload mode) -->
+            <div id="uploadSection" class="w-full hidden mb-4 space-y-2">
+                <div class="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
+                    <label class="block text-[9px] font-bold text-slate-500 uppercase mb-2" id="uploadLabel">Select Face Photo(s)</label>
+                    <input type="file" id="imageUpload" accept="image/*" multiple class="text-[10px] text-slate-400 w-full">
+                    <p class="text-[8px] text-slate-500 mt-2 leading-tight">For best accuracy, upload multiple photos (e.g. front, left, right). You can also upload just one.</p>
+                </div>
+                <!-- Zoom + pan hint (visible after image loaded) -->
+                <div id="zoomPanel" class="hidden bg-slate-800/40 p-3 rounded-lg border border-slate-700">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-[9px] font-bold text-slate-500 uppercase">🔍 Zoom &amp; Position Face</span>
+                        <span id="zoomLabel" class="text-[9px] text-emerald-400 font-mono font-bold">1.0×</span>
+                    </div>
+                    <div id="zoomControls">
+                        <span class="text-[9px] text-slate-600">−</span>
+                        <input type="range" id="zoomSlider" min="100" max="400" value="100" step="5">
+                        <span class="text-[9px] text-slate-600">+</span>
+                    </div>
+                    <p class="text-[8px] text-slate-600 mt-2 text-center">Scroll or drag to position · Zoom to center
+                        the face</p>
+                    <button onclick="resetZoom()"
+                        class="mt-2 w-full text-[9px] font-bold text-slate-500 hover:text-slate-300 border border-slate-700 rounded py-1 transition-colors">↺
+                        Reset View</button>
+                </div>
+            </div>
+
+            <!-- Capture button (camera mode) -->
+            <div id="captureSection" class="w-full mb-4">
+                <div id="captureGuideText" class="text-[10px] font-bold text-slate-400 uppercase text-center mb-2">
+                    Angle 1/5: <span class="text-emerald-400" id="currentAngleText">Front</span>
+                </div>
+                <button id="captureBtn" onclick="captureNextAngle()"
+                    class="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 rounded-lg active:scale-95 transition-all text-sm border border-white/10">
+                    📸 Capture Front Angle
+                </button>
+            </div>
+
+            <!-- Name input + enroll -->
+            <div class="w-full space-y-3">
+                <input type="text" id="userName" placeholder="Personnel Full Name"
+                    class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3.5 text-sm focus:border-emerald-500 outline-none transition-all font-medium">
+                <button id="enrollBtn" onclick="processEnrollment()"
+                    class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-lg active:scale-95 transition-all disabled:opacity-40 shadow-lg shadow-emerald-900/20">
+                    Capture &amp; Authorize
                 </button>
             </div>
         </section>
 
-        <!-- Personnel List -->
+        <!-- ── Personnel List ── -->
         <section class="glass p-8 flex flex-col">
             <h2 class="text-lg font-bold mb-6 flex justify-between items-center">
                 Authorized Personnel
                 <span id="user-count" class="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-400">0</span>
             </h2>
-            <div id="userList" class="space-y-3 overflow-y-auto max-h-[400px] pr-2">
+            <div id="userList" class="space-y-3 overflow-y-auto max-h-[480px] pr-2">
                 <div class="text-slate-600 text-xs italic text-center py-10">Checking registry...</div>
             </div>
         </section>
@@ -76,148 +351,511 @@
     <canvas id="boostCanvas" style="display:none;"></canvas>
 
     <script>
+        // ── State ──────────────────────────────────────────────────
         let detector;
+        let mode = 'camera';         // 'camera' | 'upload'
+        let capturedFrame = null;    // DataURL of captured still frame
+        let isCaptured = false;      // true after snapshot taken
+        let faceDetectedLive = false;
+        let uploadedFiles = [];      // Track all selected files
+        
+        // Multi-angle camera state
+        const CAPTURE_POSES = ['Front', 'Left', 'Right', 'Up', 'Down'];
+        let captureStep = 0;
+        let cameraEmbeddings = [];
+
+        // Zoom / pan state (upload mode only)
+        let imgZoom = 1;     // 1.0 – 4.0
+        let panX = 0, panY = 0;  // translation in CSS px
+        let isPanning = false, panStart = { x: 0, y: 0 };
+
         const video = document.getElementById('webcam');
+        const previewImg = document.getElementById('previewImg');
+        const imageUpload = document.getElementById('imageUpload');
         const canvas = document.getElementById('overlay');
         const boostCanvas = document.getElementById('boostCanvas');
         const bCtx = boostCanvas.getContext('2d');
         const ctx = canvas.getContext('2d');
         const guide = document.getElementById('guide');
-        const loaderText = document.getElementById('loader-text');
+        const faceBadge = document.getElementById('faceBadge');
+        const enrollBtn = document.getElementById('enrollBtn');
+        const modeTag = document.getElementById('modeTag');
+        const mediaContainer = document.getElementById('mediaContainer');
 
+        // ── Zoom / Pan helpers ──────────────────────────────────────
+        function applyZoom() {
+            previewImg.style.transform = `scale(${imgZoom}) translate(${panX / imgZoom}px, ${panY / imgZoom}px)`;
+            document.getElementById('zoomLabel').innerText = imgZoom.toFixed(1) + '×';
+            document.getElementById('zoomSlider').value = Math.round(imgZoom * 100);
+        }
+
+        function resetZoom() {
+            imgZoom = 1; panX = 0; panY = 0;
+            applyZoom();
+            // Re-run face detection on reset view
+            if (isCaptured) analyzeAndHighlight(previewImg);
+        }
+
+        // Mouse-wheel zoom on the container
+        mediaContainer.addEventListener('wheel', (e) => {
+            if (mode !== 'upload' || !isCaptured) return;
+            e.preventDefault();
+            imgZoom = Math.max(1, Math.min(4, imgZoom - e.deltaY * 0.004));
+            applyZoom();
+        }, { passive: false });
+
+        // Drag-to-pan on the preview image
+        previewImg.addEventListener('mousedown', (e) => {
+            if (mode !== 'upload' || !isCaptured || imgZoom <= 1) return;
+            isPanning = true;
+            panStart = { x: e.clientX - panX, y: e.clientY - panY };
+            mediaContainer.classList.add('dragging');
+            e.preventDefault();
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!isPanning) return;
+            panX = e.clientX - panStart.x;
+            panY = e.clientY - panStart.y;
+            applyZoom();
+        });
+        document.addEventListener('mouseup', () => {
+            if (isPanning) { isPanning = false; mediaContainer.classList.remove('dragging'); }
+        });
+
+        // Zoom slider
+        document.getElementById('zoomSlider').addEventListener('input', (e) => {
+            imgZoom = parseInt(e.target.value) / 100;
+            applyZoom();
+        });
+
+        // Returns a 640x480 canvas of the currently visible (zoomed/panned) image region
+        // Used by processEnrollment so face detection works on the cropped view
+        function getEnrollTarget() {
+            if (!isCaptured || !previewImg.naturalWidth) return previewImg;
+            const iw = previewImg.naturalWidth, ih = previewImg.naturalHeight;
+            const dispW = previewImg.clientWidth, dispH = previewImg.clientHeight;
+
+            // Visible region in image coordinates
+            const visW = iw / imgZoom, visH = ih / imgZoom;
+            // panX/Y are in CSS px relative to displayed image; convert to image coords
+            const offX = -(panX / dispW) * iw;
+            const offY = -(panY / dispH) * ih;
+            const srcX = Math.max(0, (iw - visW) / 2 + offX);
+            const srcY = Math.max(0, (ih - visH) / 2 + offY);
+            const srcW = Math.min(visW, iw - srcX);
+            const srcH = Math.min(visH, ih - srcY);
+
+            const crop = document.createElement('canvas');
+            crop.width = 640; crop.height = 480;
+            crop.getContext('2d').drawImage(previewImg, srcX, srcY, srcW, srcH, 0, 0, 640, 480);
+            return crop;
+        }
+
+        // ── Init ───────────────────────────────────────────────────
+        let cameraReady = false;
         async function init() {
+            // 1. Load AI model FIRST (works without camera)
             try {
-                // 1. START CAMERA FIRST (Don't let AI load block the camera view)
-                loaderText.innerText = "Opening Camera...";
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { width: 640, height: 480 } 
-                });
-                video.srcObject = stream;
-                
-                // Force play for mobile/strict browsers
-                await video.play();
-
-                video.onloadedmetadata = () => {
-                    canvas.width = video.videoWidth; 
-                    canvas.height = video.videoHeight;
-                    boostCanvas.width = video.videoWidth; 
-                    boostCanvas.height = video.videoHeight;
-                };
-
-                // 2. INITIALIZE TENSORFLOW
-                loaderText.innerText = "Initializing AI Engine...";
-                try {
-                    await tf.setBackend('webgl');
-                } catch (e) {
-                    console.warn("WebGL not supported, falling back to CPU");
-                    await tf.setBackend('cpu');
-                }
+                document.getElementById('loader-text').innerText = 'Loading AI Engine...';
+                await tf.setBackend('webgl');
                 await tf.ready();
-                
-                // 3. LOAD DETECTOR
-                loaderText.innerText = "Loading Biometric Model...";
+                document.getElementById('loader-text').innerText = 'Loading Biometric Model...';
                 detector = await faceLandmarksDetection.createDetector(
-                    faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh, 
+                    faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
                     { runtime: 'tfjs', refineLandmarks: true }
                 );
+            } catch (err) {
+                console.error('Model load error:', err);
+                document.getElementById('loader-text').innerText = 'AI Engine failed to load.';
+                return;
+            }
 
-                // 4. READY
+            // 2. Try camera (optional — upload still works without it)
+            try {
+                document.getElementById('loader-text').innerText = 'Opening Camera...';
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                video.srcObject = stream;
+                await video.play();
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    boostCanvas.width = video.videoWidth;
+                    boostCanvas.height = video.videoHeight;
+                };
+                cameraReady = true;
                 document.getElementById('loader').classList.add('hidden');
                 drawLoop();
-
             } catch (err) {
-                console.error("Init Error:", err);
-                document.getElementById('loader').innerHTML = `
-                    <div class="text-center px-8">
-                        <p class="text-rose-500 font-bold text-xs uppercase mb-2">Access Error</p>
-                        <p class="text-[10px] text-slate-500 leading-relaxed mb-4">${err.message}</p>
-                        <button onclick="location.reload()" class="bg-emerald-600 px-4 py-2 rounded text-[10px] font-bold">RETRY SYSTEM</button>
-                    </div>`;
+                console.warn('Camera unavailable, upload mode available.', err);
+                document.getElementById('loader').classList.add('hidden');
+                switchMode('upload');
             }
         }
 
-        function getBoostedFrame() {
-            bCtx.filter = 'brightness(1.6) contrast(1.3) saturate(1.1)';
-            bCtx.drawImage(video, 0, 0);
-            bCtx.filter = 'none';
-            return boostCanvas;
+        // ── Mode Switcher ──────────────────────────────────────────
+        function switchMode(m) {
+            mode = m;
+            isCaptured = false;
+            capturedFrame = null;
+
+            document.getElementById('tab-camera').className = `tab-btn ${m === 'camera' ? 'active' : 'inactive'}`;
+            document.getElementById('tab-upload').className = `tab-btn ${m === 'upload' ? 'active' : 'inactive'}`;
+            document.getElementById('uploadSection').classList.toggle('hidden', m !== 'upload');
+            document.getElementById('captureSection').classList.toggle('hidden', m !== 'camera');
+            document.getElementById('guide').style.display = m === 'camera' ? 'block' : 'none';
+
+            if (m === 'camera') {
+                previewImg.classList.add('hidden');
+                video.classList.remove('hidden');
+                modeTag.innerText = 'LIVE CAMERA';
+                modeTag.className = 'vision-tag bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+                
+                // Reset multi-angle state
+                captureStep = 0;
+                cameraEmbeddings = [];
+                document.getElementById('captureGuideText').innerHTML = `Angle 1/5: <span class="text-emerald-400">Front</span>`;
+                document.getElementById('captureBtn').innerText = '📸 Capture Front Angle';
+                enrollBtn.innerText = 'Capture 5 Angles to Authorize';
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                setBadge('scanning');
+                // Hide zoom panel when leaving upload mode
+                document.getElementById('zoomPanel').classList.add('hidden');
+            } else {
+                modeTag.innerText = 'PHOTO UPLOAD';
+                modeTag.className = 'vision-tag bg-amber-500/20 text-amber-400 border border-amber-500/30';
+                enrollBtn.innerText = 'Analyze & Authorize';
+                setBadge('scanning');
+                // Reset zoom state for new upload session
+                imgZoom = 1; panX = 0; panY = 0; applyZoom();
+            }
         }
 
-        async function drawLoop() {
-            if (!detector) return;
-            try {
-                const faces = await detector.estimateFaces(getBoostedFrame());
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+        function setBadge(state, text) {
+            faceBadge.className = `face-badge badge-${state}`;
+            faceBadge.innerText = text || { scanning: 'Scanning...', detected: '✓ Face Detected', none: '✗ No Face' }[state];
+        }
+
+        // ── Capture Photo from camera (Multi-angle) ────────────────
+        async function captureNextAngle() {
+            if (!video.videoWidth || !detector) return;
+            if (captureStep >= 5) return;
+
+            // Flash effect
+            modeTag.innerText = 'CAPTURING...';
+            
+            // Draw current video frame to a temp canvas
+            const snap = document.createElement('canvas');
+            snap.width = video.videoWidth;
+            snap.height = video.videoHeight;
+            const sCtx = snap.getContext('2d');
+            sCtx.save();
+            sCtx.scale(-1, 1);
+            sCtx.drawImage(video, -snap.width, 0);
+            sCtx.restore();
+
+            // Extract embedding immediately
+            const img = document.createElement('img');
+            img.src = snap.toDataURL('image/jpeg', 0.95);
+            await new Promise(r => { img.onload = r; });
+            
+            const faces = await detector.estimateFaces(img);
+            if (!faces || faces.length === 0) {
+                alert('No face detected. Please ensure your face is clearly visible.');
+                modeTag.innerText = 'LIVE CAMERA';
+                return;
+            }
+            
+            cameraEmbeddings.push(extractEmbedding(faces));
+            captureStep++;
+            showToast(`✓ ${CAPTURE_POSES[captureStep-1]} angle captured!`, 'success');
+
+            if (captureStep < 5) {
+                // Prepare next angle
+                document.getElementById('captureGuideText').innerHTML = `Angle ${captureStep+1}/5: <span class="text-emerald-400">${CAPTURE_POSES[captureStep]}</span>`;
+                document.getElementById('captureBtn').innerText = `📸 Capture ${CAPTURE_POSES[captureStep]} Angle`;
+                modeTag.innerText = 'LIVE CAMERA';
+            } else {
+                // All 5 captured
+                document.getElementById('captureSection').classList.add('hidden');
+                enrollBtn.innerText = 'Authorize Identity (5 Angles)';
                 
+                // Show final snap in preview
+                previewImg.src = img.src;
+                previewImg.classList.remove('hidden');
+                video.classList.add('hidden');
+                guide.style.display = 'none';
+                isCaptured = true;
+                
+                modeTag.innerText = 'ALL ANGLES CAPTURED';
+                modeTag.className = 'vision-tag bg-sky-500/20 text-sky-400 border border-sky-500/30';
+                
+                // Highlight face on final image
+                analyzeStill(previewImg).then(found => {
+                    setBadge(found ? 'detected' : 'none');
+                    drawFaceHighlight(previewImg, found);
+                });
+            }
+        }
+
+        // ── Upload handler ─────────────────────────────────────────
+        imageUpload.onchange = (e) => {
+            uploadedFiles = Array.from(e.target.files);
+            if (uploadedFiles.length === 0) return;
+            
+            const label = document.getElementById('uploadLabel');
+            if (label) label.innerText = `Selected ${uploadedFiles.length} Photo(s)`;
+
+            const file = uploadedFiles[0]; // Preview first file
+            const reader = new FileReader();
+            reader.onload = event => {
+                previewImg.src = event.target.result;
+                previewImg.classList.remove('hidden');
+                video.classList.add('hidden');
+                isCaptured = true;
+                capturedFrame = null;
+                // Reset zoom for fresh image
+                imgZoom = 1; panX = 0; panY = 0; applyZoom();
+                setBadge('scanning');
+
+                previewImg.onload = () => {
+                    canvas.width = previewImg.clientWidth || 640;
+                    canvas.height = previewImg.clientHeight || 480;
+                    // Show zoom controls
+                    document.getElementById('zoomPanel').classList.remove('hidden');
+                    analyzeStill(previewImg).then(found => {
+                        setBadge(found ? 'detected' : 'none');
+                        drawFaceHighlight(previewImg, found);
+                    });
+                };
+            };
+            reader.readAsDataURL(file);
+        };
+
+        // ── Still image face analysis ──────────────────────────────
+        async function analyzeStill(imgEl) {
+            if (!detector) return false;
+            try {
+                const faces = await detector.estimateFaces(imgEl);
+                return faces && faces.length > 0;
+            } catch { return false; }
+        }
+
+        async function drawFaceHighlight(imgEl, found) {
+            if (!detector) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (!found) return;
+            try {
+                const faces = await detector.estimateFaces(imgEl);
+                if (!faces || faces.length === 0) return;
+                const kps = faces[0].keypoints;
+                const xs = kps.map(k => k.x), ys = kps.map(k => k.y);
+                const x = Math.max(0, Math.min(...xs) - 12);
+                const y = Math.max(0, Math.min(...ys) - 12);
+                const w = Math.max(...xs) - Math.min(...xs) + 24;
+                const h = Math.max(...ys) - Math.min(...ys) + 24;
+
+                ctx.strokeStyle = '#10b981';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x, y, w, h);
+                ctx.fillStyle = 'rgba(16,185,129,0.08)';
+                ctx.fillRect(x, y, w, h);
+
+                // Corner accents
+                const cs = 14;
+                ctx.lineWidth = 4;
+                [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(([cx, cy], i) => {
+                    ctx.beginPath();
+                    ctx.moveTo(cx + (i % 2 === 0 ? cs : -cs), cy);
+                    ctx.lineTo(cx, cy);
+                    ctx.lineTo(cx, cy + (i < 2 ? cs : -cs));
+                    ctx.stroke();
+                });
+            } catch { }
+        }
+
+        // ── Live draw loop ─────────────────────────────────────────
+        async function drawLoop() {
+            if (mode !== 'camera' || isCaptured) { requestAnimationFrame(drawLoop); return; }
+            if (!detector) { requestAnimationFrame(drawLoop); return; }
+            try {
+                bCtx.filter = 'brightness(1.5) contrast(1.2)';
+                bCtx.drawImage(video, 0, 0);
+                bCtx.filter = 'none';
+
+                const faces = await detector.estimateFaces(boostCanvas);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
                 if (faces && faces.length > 0) {
                     guide.classList.add('active');
-                    const nose = faces[0].keypoints.find(k => k.name === 'noseTip');
-                    if (nose) {
-                        ctx.beginPath();
-                        ctx.arc(canvas.width - nose.x, nose.y, 40, 0, 2 * Math.PI);
-                        ctx.strokeStyle = '#10b981';
-                        ctx.lineWidth = 2;
-                        ctx.stroke();
-                    }
+                    faceDetectedLive = true;
+                    setBadge('detected');
+
+                    // Draw a soft green outline around detected face
+                    const kps = faces[0].keypoints;
+                    const xs = kps.map(k => k.x), ys = kps.map(k => k.y);
+                    const x = Math.max(0, Math.min(...xs) - 10);
+                    const y = Math.max(0, Math.min(...ys) - 10);
+                    const w = Math.max(...xs) - Math.min(...xs) + 20;
+                    const h = Math.max(...ys) - Math.min(...ys) + 20;
+                    ctx.strokeStyle = 'rgba(16,185,129,0.7)';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(x, y, w, h);
                 } else {
                     guide.classList.remove('active');
+                    faceDetectedLive = false;
+                    setBadge('none', '✗ No Face');
                 }
-            } catch (e) {
-                console.warn("Frame detection skipped");
-            }
+            } catch { }
             requestAnimationFrame(drawLoop);
         }
 
-        async function enrollUser() {
-            const nameInput = document.getElementById('userName');
-            const name = nameInput.value.trim();
-            const btn = document.getElementById('enrollBtn');
-            if (!name) return alert("Please enter personnel name.");
-            if (!detector) return alert("AI Engine not ready yet.");
-
-            btn.disabled = true;
-            btn.innerText = "Analyzing Landmarks...";
-
-            const faces = await detector.estimateFaces(getBoostedFrame());
-            
-            if (!faces || faces.length === 0) {
-                btn.disabled = false;
-                btn.innerText = "Capture & Authorize";
-                return alert("No face detected. Look directly at the camera and ensure you are in the light.");
-            }
-
+        // Helper: build rich feature vector from MediaPipe points
+        function extractEmbedding(faces) {
             const points = faces[0].keypoints;
-            const nose = points.find(k => k.name === 'noseTip');
+            const nose = points.find(k => k.name === 'noseTip') || points[1];
             const lEye = points.find(k => k.name === 'leftEye');
             const rEye = points.find(k => k.name === 'rightEye');
+            const eyeDist = Math.hypot(lEye.x - rEye.x, lEye.y - rEye.y) || 1;
+            const g = i => points[i] || { x: nose.x, y: nose.y, z: 0 };
 
-            const eyeDist = Math.hypot(lEye.x - rEye.x, lEye.y - rEye.y);
-            const normalizedEmbedding = points.map(kp => [
+            const spatial = points.map(kp => [
                 (kp.x - nose.x) / eyeDist,
                 (kp.y - nose.y) / eyeDist
             ]).flat();
+            const depth = points.map(kp => ((kp.z || 0) / eyeDist) * 8);
+
+            const chin = g(152), leftJaw = g(234), rightJaw = g(454);
+            const noseBase = g(2), upperLip = g(13);
+            const leftBrow = g(70), rightBrow = g(300);
+            const leftOuter = g(33), rightOuter = g(263);
+            const faceW = Math.hypot(leftJaw.x - rightJaw.x, leftJaw.y - rightJaw.y);
+            const faceH = Math.hypot(nose.x - chin.x, nose.y - chin.y);
+            const ratios = [
+                (faceW / eyeDist) * 5,
+                (faceH / eyeDist) * 5,
+                (Math.hypot(leftBrow.x - rightBrow.x, leftBrow.y - rightBrow.y) / eyeDist) * 5,
+                (Math.hypot(nose.x - noseBase.x, nose.y - noseBase.y) / eyeDist) * 5,
+                (Math.hypot(nose.x - upperLip.x, nose.y - upperLip.y) / eyeDist) * 5,
+                (Math.hypot(leftOuter.x - rightOuter.x, leftOuter.y - rightOuter.y) / eyeDist) * 5,
+                Math.abs(((leftBrow.y + rightBrow.y) / 2) - ((lEye.y + rEye.y) / 2)) / eyeDist * 10,
+                (faceW / (faceH || 1)) * 5
+            ];
+            return [...spatial, ...depth, ...ratios];
+        }
+
+        // ── Enrollment ─────────────────────────────────────────────
+        async function processEnrollment() {
+            const name = document.getElementById('userName').value.trim();
+            if (!name) return alert('Please enter a personnel name.');
+            if (!detector) return alert('AI Engine not ready. Please wait.');
+
+            enrollBtn.disabled = true;
+            enrollBtn.innerText = 'Extracting Biometrics...';
 
             try {
+                if (mode === 'camera') {
+                    if (cameraEmbeddings.length < 5) {
+                        enrollBtn.disabled = false;
+                        enrollBtn.innerText = 'Capture 5 Angles to Authorize';
+                        return alert('Please capture all 5 angles before authorizing.');
+                    }
+                    allEmbeddings = cameraEmbeddings;
+                } else if (mode === 'upload' && uploadedFiles.length > 0) {
+                    // Multi-file upload mode
+                    for (let i = 0; i < uploadedFiles.length; i++) {
+                        enrollBtn.innerText = `Analyzing Photo ${i + 1}/${uploadedFiles.length}...`;
+                        const img = document.createElement('img');
+                        img.src = URL.createObjectURL(uploadedFiles[i]);
+                        await new Promise(r => { img.onload = r; });
+                        const faces = await detector.estimateFaces(img);
+                        if (faces && faces.length > 0) {
+                            allEmbeddings.push(extractEmbedding(faces));
+                        }
+                    }
+                    if (allEmbeddings.length === 0) {
+                        enrollBtn.disabled = false;
+                        enrollBtn.innerText = 'Analyze & Authorize';
+                        return alert('No faces detected in any of the uploaded photos.');
+                    }
+                } else {
+                    // Single file upload fallback
+                    if (!previewImg.src || previewImg.classList.contains('hidden')) {
+                        enrollBtn.disabled = false;
+                        enrollBtn.innerText = 'Analyze & Authorize';
+                        return alert('No image available. Upload a photo.');
+                    }
+
+                    const enrollTarget = (imgZoom > 1) ? getEnrollTarget() : previewImg;
+                    const faces = await detector.estimateFaces(enrollTarget);
+                    if (!faces || faces.length === 0) {
+                        enrollBtn.disabled = false;
+                        enrollBtn.innerText = 'Analyze & Authorize';
+                        return alert('No face detected. Ensure the face is clearly visible and try again.');
+                    }
+                    allEmbeddings.push(extractEmbedding(faces));
+                }
+
+                enrollBtn.innerText = 'Authorizing...';
+
                 const res = await fetch('/api/users/enroll', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, faceEmbedding: normalizedEmbedding })
+                    body: JSON.stringify({ name, faceEmbeddings: allEmbeddings })
                 });
-                
                 const data = await res.json();
+
                 if (data.success) {
-                    nameInput.value = '';
+                    showToast(`✓ ${name} authorized successfully.`, 'success');
+                    document.getElementById('userName').value = '';
+                    isCaptured = false;
+                    capturedFrame = null;
+                    if (mode === 'camera') {
+                        // Reset camera flow
+                        captureStep = 0;
+                        cameraEmbeddings = [];
+                        document.getElementById('captureSection').classList.remove('hidden');
+                        document.getElementById('captureGuideText').innerHTML = `Angle 1/5: <span class="text-emerald-400">Front</span>`;
+                        document.getElementById('captureBtn').innerText = '📸 Capture Front Angle';
+                        
+                        previewImg.classList.add('hidden');
+                        video.classList.remove('hidden');
+                        guide.style.display = 'block';
+                        modeTag.innerText = 'LIVE CAMERA';
+                        modeTag.className = 'vision-tag bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    }
                     fetchUsers();
-                    alert(`Access granted. ${name} is now authorized.`);
+                } else {
+                    alert('Enrollment failed: ' + data.message);
                 }
             } catch (err) {
-                alert("Database sync failed. Check server connection.");
+                alert('Database sync failed. Check server connection.');
+                console.error(err);
             } finally {
-                btn.disabled = false;
-                btn.innerText = "Capture & Authorize";
+                enrollBtn.disabled = false;
+                enrollBtn.innerText = mode === 'camera' ? 'Capture & Authorize' : 'Analyze & Authorize';
             }
         }
 
+        // ── Delete user ────────────────────────────────────────────
+        async function deleteUser(id, name) {
+            if (!confirm(`Remove "${name}" from authorized personnel?`)) return;
+            try {
+                const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`✓ ${name} deauthorized.`, 'warning');
+                    fetchUsers();
+                } else {
+                    alert('Delete failed: ' + data.message);
+                }
+            } catch {
+                alert('Server error during deletion.');
+            }
+        }
+
+        // ── Fetch & render user list ───────────────────────────────
         async function fetchUsers() {
             const list = document.getElementById('userList');
             const countBadge = document.getElementById('user-count');
@@ -226,33 +864,53 @@
                 const users = await res.json();
                 list.innerHTML = '';
                 countBadge.innerText = users.length;
-                
+
                 if (users.length === 0) {
-                    list.innerHTML = '<div class="text-slate-600 text-xs italic text-center py-10">No authorized profiles found.</div>';
+                    list.innerHTML = '<div class="text-slate-600 text-xs italic text-center py-10">No profiles found.</div>';
                     return;
                 }
 
                 users.forEach(u => {
                     const d = document.createElement('div');
-                    d.className = "bg-slate-800/40 p-4 rounded-xl border border-white/5 flex justify-between items-center animate-in fade-in";
+                    d.className = 'bg-slate-800/40 p-4 rounded-xl border border-white/5 flex justify-between items-center fade-in';
+                    const enrolled = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—';
                     d.innerHTML = `
                         <div class="flex items-center gap-3">
-                            <div class="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 text-[10px] font-bold border border-emerald-500/20">
+                            <div class="w-9 h-9 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 text-sm font-bold border border-emerald-500/20">
                                 ${u.name.charAt(0).toUpperCase()}
                             </div>
-                            <span class="text-sm font-semibold">${u.name}</span>
+                            <div>
+                                <p class="text-sm font-semibold">${u.name}</p>
+                                <p class="text-[9px] text-slate-600 uppercase">Enrolled ${enrolled}</p>
+                            </div>
                         </div>
-                        <span class="text-[7px] bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-full border border-emerald-500/20 uppercase font-black tracking-widest">Authorized</span>
-                    `;
+                        <div class="flex items-center gap-2">
+                            <span class="text-[7px] bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-full border border-emerald-500/20 uppercase font-black tracking-widest">Authorized</span>
+                            <button onclick="deleteUser('${u._id}', '${u.name.replace(/'/g, "\\'")}')"
+                                class="text-[9px] font-bold uppercase text-rose-500 border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 rounded-full transition-all">
+                                ✕ Remove
+                            </button>
+                        </div>`;
                     list.appendChild(d);
                 });
-            } catch (e) {
+            } catch {
                 list.innerHTML = '<div class="text-rose-500 text-[10px] text-center italic py-4">Database Offline</div>';
             }
         }
 
-        window.onload = init;
-        fetchUsers();
+        // ── Toast notification ─────────────────────────────────────
+        function showToast(msg, type = 'success') {
+            const t = document.createElement('div');
+            const colors = { success: 'bg-emerald-600', warning: 'bg-amber-600', error: 'bg-rose-600' };
+            t.className = `fixed bottom-6 left-1/2 -translate-x-1/2 ${colors[type]} text-white text-xs font-bold px-5 py-3 rounded-xl shadow-xl z-50 transition-all`;
+            t.innerText = msg;
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 3000);
+        }
+
+        // ── Bootstrap ──────────────────────────────────────────────
+        window.onload = () => { init(); fetchUsers(); };
     </script>
 </body>
+
 </html>

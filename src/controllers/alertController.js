@@ -7,10 +7,10 @@ const emailService = require('../services/emailService');
  */
 exports.handleAlert = async (req, res) => {
     try {
-        const { type, confidence, livenessScore, personCount, image, metadata } = req.body;
+        const { type, confidence, livenessScore, personCount, image, metadata, firePct } = req.body;
 
         // Visual console log for the developer
-        console.log(`\x1b[41m\x1b[37m [THREAT DETECTED] \x1b[0m ${type.toUpperCase()} | People: ${personCount || 1}`);
+        console.log(`\x1b[41m\x1b[37m [THREAT DETECTED] \x1b[0m ${type.toUpperCase()} | ${type === 'fire' ? `Coverage: ${firePct}%` : `People: ${personCount || 1}`}`);
 
         // 1. Save Alert to MongoDB Atlas
         // We save the base64 'image' string into 'evidenceImage'
@@ -33,7 +33,8 @@ exports.handleAlert = async (req, res) => {
             confidence: savedAlert.confidence,
             personCount: savedAlert.personCount,
             image: image, // Base64 snapshot
-            timestamp: savedAlert.timestamp
+            timestamp: savedAlert.timestamp,
+            firePct: firePct || 0
         });
 
         // 3. Update Database status after dispatch attempt
