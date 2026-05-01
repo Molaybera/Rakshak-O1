@@ -69,3 +69,34 @@ exports.handleAlert = async (req, res) => {
         });
     }
 };
+
+/**
+ * Get all alerts
+ */
+exports.getAlerts = async (req, res) => {
+    try {
+        // Fetch alerts, sorted by newest first
+        const alerts = await Alert.find().sort({ timestamp: -1 });
+        res.status(200).json(alerts);
+    } catch (error) {
+        console.error('Error fetching alerts:', error);
+        res.status(500).json({ success: false, message: 'Server error fetching alerts' });
+    }
+};
+
+/**
+ * Delete an alert
+ */
+exports.deleteAlert = async (req, res) => {
+    try {
+        const alertId = req.params.id;
+        const deletedAlert = await Alert.findByIdAndDelete(alertId);
+        if (!deletedAlert) {
+            return res.status(404).json({ success: false, message: 'Alert not found' });
+        }
+        res.status(200).json({ success: true, message: 'Alert deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting alert:', error);
+        res.status(500).json({ success: false, message: 'Server error deleting alert' });
+    }
+};

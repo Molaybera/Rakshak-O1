@@ -11,112 +11,34 @@
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.min.js"></script>
     <script src="./js/rakshakSecurity.js"></script>
     <script src="./js/rakshakFire.js"></script>
-    <style>
-        :root {
-            --bg-deep: #0f172a;
-            --emerald: #10b981;
-            --rose: #f43f5e;
-            --amber: #f59e0b;
-        }
-
-        body {
-            background: var(--bg-deep);
-            color: #f1f5f9;
-            font-family: 'Inter', sans-serif;
-            overflow: hidden;
-            height: 100vh;
-        }
-
-        .glass {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 1rem;
-        }
-
-        .monitor-frame {
-            position: relative;
-            background: #000;
-            border-radius: 1rem;
-            overflow: hidden;
-            border: 2px solid #1e293b;
-        }
-
-        video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transform: scaleX(-1);
-        }
-
-        canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 20;
-            /* Mirror canvas to match mirrored video */
-            transform: scaleX(-1);
-        }
-
-        .alert-active {
-            animation: pulse-red 0.5s infinite alternate;
-        }
-
-        @keyframes pulse-red {
-            from {
-                border-color: #1e293b;
-            }
-
-            to {
-                border-color: var(--rose);
-                box-shadow: 0 0 20px var(--rose);
-            }
-        }
-
-        /* Liveness progress ring */
-        #liveness-ring {
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            z-index: 30;
-            display: none;
-        }
-
-        .liveness-svg circle.track {
-            stroke: rgba(255, 255, 255, 0.1);
-        }
-
-        .liveness-svg circle.fill {
-            transition: stroke-dashoffset 0.1s linear;
-            stroke-linecap: round;
-        }
-    </style>
+    <link rel="stylesheet" href="./style/main.css">
 </head>
 
 <body class="p-4 flex flex-col">
 
     <header class="max-w-7xl mx-auto w-full flex justify-between items-center mb-6">
         <div>
-            <h1 class="text-2xl font-black tracking-tighter uppercase leading-none">RAKSHAK <span
-                    class="text-emerald-500">O1</span></h1>
+            <h1 class="text-2xl font-black tracking-tighter uppercase leading-none text-zinc-50">RAKSHAK <span
+                    class="text-amber-500">O1</span></h1>
             <div class="flex gap-4 mt-1">
-                <p class="text-slate-500 text-[9px] font-bold uppercase tracking-widest">Intelligence Terminal</p>
+                <p class="text-zinc-400 text-[9px] font-bold uppercase tracking-widest">Intelligence Terminal</p>
             </div>
         </div>
         <div class="flex items-center gap-4">
-            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700">
-                <a href="./managementDashboard.html"
-                    class="text-[9px] text-emerald-500 font-bold uppercase hover:underline">User Management</a>
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700 shadow-lg shadow-black/20">
+                <a href="./alertHistory.html"
+                    class="text-[9px] text-amber-500 font-bold uppercase hover:underline">Alert History</a>
             </div>
-            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700">
-                <div id="status-dot" class="w-2 h-2 rounded-full bg-slate-600"></div>
-                <span id="status-text" class="text-[9px] font-bold uppercase text-slate-500">System Offline</span>
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700 shadow-lg shadow-black/20">
+                <a href="./managementDashboard.html"
+                    class="text-[9px] text-amber-500 font-bold uppercase hover:underline">User Management</a>
+            </div>
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700 shadow-lg shadow-black/20">
+                <div id="status-dot" class="w-2 h-2 rounded-full bg-amber-500"></div>
+                <span id="status-text" class="text-[9px] font-bold uppercase text-zinc-400">System Offline</span>
             </div>
             <button id="main-toggle" onclick="RakshakApp.toggle()"
-                class="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-bold text-sm transition-all active:scale-95">
+                class="bg-amber-600 hover:bg-amber-500 text-zinc-50 px-6 py-2 rounded-lg font-bold text-sm transition-all shadow-lg shadow-black/20 active:scale-95">
                 Arm System
             </button>
         </div>
@@ -142,39 +64,39 @@
                 </div>
 
                 <div id="loader"
-                    class="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center z-30 transition-opacity">
+                    class="absolute inset-0 bg-zinc-900/95 flex flex-col items-center justify-center z-30 transition-opacity">
                     <div id="spinner"
-                        class="w-8 h-8 border-4 border-slate-800 border-t-emerald-500 rounded-full animate-spin mb-4 hidden">
+                        class="w-8 h-8 border-4 border-zinc-700 border-t-amber-500 rounded-full animate-spin mb-4 hidden">
                     </div>
-                    <p id="loader-msg" class="text-slate-600 font-bold uppercase text-xs">Ready for Arming</p>
+                    <p id="loader-msg" class="text-zinc-400 font-bold uppercase text-xs">Ready for Arming</p>
                 </div>
             </div>
 
             <div class="grid grid-cols-4 gap-4 h-24">
                 <div class="glass flex flex-col items-center justify-center">
-                    <span class="text-[9px] uppercase font-bold text-slate-500 mb-1">Live Count</span>
-                    <div class="text-2xl font-mono font-black text-emerald-400" id="count-val">0</div>
+                    <span class="text-[9px] uppercase font-bold text-zinc-400 mb-1">Live Count</span>
+                    <div class="text-2xl font-mono font-black text-amber-500" id="count-val">0</div>
                 </div>
                 <div class="glass flex flex-col items-center justify-center">
-                    <span class="text-[9px] uppercase font-bold text-slate-500 mb-1">Liveness</span>
-                    <div class="text-xl font-mono font-black" id="activity-val">--</div>
+                    <span class="text-[9px] uppercase font-bold text-zinc-400 mb-1">Liveness</span>
+                    <div class="text-xl font-mono font-black text-zinc-50" id="activity-val">--</div>
                 </div>
                 <div class="glass flex flex-col items-center justify-center">
-                    <span class="text-[9px] uppercase font-bold text-slate-500 mb-1">Identity Status</span>
-                    <div class="text-[10px] font-black uppercase text-slate-500" id="identity-val">IDLE</div>
+                    <span class="text-[9px] uppercase font-bold text-zinc-400 mb-1">Identity Status</span>
+                    <div class="text-[10px] font-black uppercase text-zinc-400" id="identity-val">IDLE</div>
                 </div>
                 <div class="glass flex flex-col items-center justify-center">
-                    <span class="text-[9px] uppercase font-bold text-slate-500 mb-1">Fire Threat</span>
-                    <div class="text-xl font-mono font-black text-slate-400" id="fire-val">0%</div>
+                    <span class="text-[9px] uppercase font-bold text-zinc-400 mb-1">Fire Threat</span>
+                    <div class="text-xl font-mono font-black text-zinc-400" id="fire-val">0%</div>
                 </div>
             </div>
         </div>
 
         <aside class="lg:col-span-4 glass flex flex-col overflow-hidden">
-            <div class="p-4 border-b border-white/5 font-bold text-[10px] uppercase text-slate-400">Security Events
+            <div class="p-4 border-b border-zinc-700 font-bold text-[10px] uppercase text-zinc-400">Security Events
             </div>
             <div id="logs" class="flex-grow overflow-y-auto p-4 space-y-3 font-mono text-[10px]">
-                <div class="text-slate-600 italic">Arm system to begin tracking.</div>
+                <div class="text-zinc-500 italic">Arm system to begin tracking.</div>
             </div>
         </aside>
     </main>
@@ -182,188 +104,7 @@
     <!-- Hidden boost canvas for preprocessing -->
     <canvas id="boostCanvas" style="display:none;"></canvas>
 
-    <script>
-        // RakshakLogger, RakshakLiveness, RakshakIdentity, RakshakSecurity
-        // loaded from external file: js/rakshakSecurity.js
-
-        // ============================================================
-        // MAIN APP CONTROLLER
-        // ============================================================
-        const RakshakApp = {
-            active: false,
-            models: { coco: null, face: null },
-            ui: {
-                video: document.getElementById('webcam'),
-                canvas: document.getElementById('overlay'),
-                boostCanvas: document.getElementById('boostCanvas'),
-                ctx: null,
-                bCtx: null,
-                loader: document.getElementById('loader'),
-                spinner: document.getElementById('spinner'),
-                pMsg: document.getElementById('loader-msg'),
-                toggleBtn: document.getElementById('main-toggle')
-            },
-
-            async toggle() {
-                if (this.active) { location.reload(); return; }
-                this.ui.ctx = this.ui.canvas.getContext('2d');
-                this.ui.bCtx = this.ui.boostCanvas.getContext('2d');
-                this.ui.toggleBtn.disabled = true;
-                this.ui.spinner.classList.remove('hidden');
-                this.ui.pMsg.innerText = "Syncing Biometric Database...";
-
-                try {
-                    await RakshakIdentity.init();
-
-                    this.ui.pMsg.innerText = "Opening Camera...";
-                    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-                    this.ui.video.srcObject = stream;
-                    await this.ui.video.play();
-
-                    this.ui.pMsg.innerText = "Loading AI Core (COCO + face-api)...";
-                    this.models.coco = await cocoSsd.load();
-                    await faceapi.nets.ssdMobilenetv1.loadFromUri('/models');
-                    await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
-                    await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
-                    this.models.face = true;
-
-                    this.ui.canvas.width = this.ui.video.videoWidth;
-                    this.ui.canvas.height = this.ui.video.videoHeight;
-                    this.ui.boostCanvas.width = this.ui.video.videoWidth;
-                    this.ui.boostCanvas.height = this.ui.video.videoHeight;
-
-                    this.active = true;
-                    this.ui.loader.classList.add('hidden');
-                    this.ui.toggleBtn.disabled = false;
-                    this.ui.toggleBtn.innerText = "Disarm System";
-                    document.getElementById('status-text').innerText = "SYSTEM LIVE";
-                    document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
-
-                    RakshakLogger.add('System armed. All sensors online.', 'system');
-                    this.loop();
-                } catch (err) {
-                    this.ui.pMsg.innerText = err.message;
-                    console.error(err);
-                }
-            },
-
-            async loop() {
-                if (!this.active) return;
-
-                // ── Adaptive exposure: sample brightness and adjust filter ──
-                if (!this._exposureCanvas) {
-                    this._exposureCanvas = document.createElement('canvas');
-                    this._exposureCtx = this._exposureCanvas.getContext('2d', { willReadFrequently: true });
-                    this._exposureCanvas.width = 80;
-                    this._exposureCanvas.height = 60;
-                    this._frameIdx = 0;
-                    this._currentFilter = 'brightness(1.0) contrast(1.1)';
-                }
-                this._frameIdx++;
-                // Re-calculate exposure every 10 frames for performance
-                if (this._frameIdx % 10 === 0) {
-                    this._exposureCtx.drawImage(this.ui.video, 0, 0, 80, 60);
-                    const d = this._exposureCtx.getImageData(0, 0, 80, 60).data;
-                    let sum = 0;
-                    for (let i = 0; i < d.length; i += 16) { // sample every 4th pixel
-                        sum += (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114); // luminance
-                    }
-                    const avgLum = sum / (d.length / 16);
-                    // avgLum: 0-255. Ideal range for face detection: 80-160
-                    if (avgLum > 200) {
-                        // Very bright — darken significantly
-                        this._currentFilter = 'brightness(0.55) contrast(1.5)';
-                    } else if (avgLum > 170) {
-                        // Bright — moderate darken
-                        this._currentFilter = 'brightness(0.7) contrast(1.3)';
-                    } else if (avgLum > 130) {
-                        // Slightly bright — mild adjust
-                        this._currentFilter = 'brightness(0.85) contrast(1.15)';
-                    } else if (avgLum < 50) {
-                        // Very dark — brighten a lot
-                        this._currentFilter = 'brightness(2.0) contrast(1.3)';
-                    } else if (avgLum < 80) {
-                        // Dark — brighten
-                        this._currentFilter = 'brightness(1.5) contrast(1.2)';
-                    } else {
-                        // Ideal range — minimal processing
-                        this._currentFilter = 'brightness(1.0) contrast(1.1)';
-                    }
-                }
-
-                // Apply adaptive filter to boost canvas
-                this.ui.bCtx.filter = this._currentFilter;
-                this.ui.bCtx.drawImage(this.ui.video, 0, 0);
-                this.ui.bCtx.filter = 'none';
-
-                const [objects, faces] = await Promise.all([
-                    this.models.coco.detect(this.ui.video),
-                    faceapi.detectAllFaces(this.ui.boostCanvas).withFaceLandmarks().withFaceDescriptors()
-                ]);
-
-                this.ui.ctx.clearRect(0, 0, this.ui.canvas.width, this.ui.canvas.height);
-
-                // Liveness decision (2-second rolling window)
-                const livenessResult = RakshakLiveness.process(faces);
-
-                // Identity match (raw single-frame result)
-                const rawMatch = RakshakIdentity.match(faces);
-
-                // ── Temporal Consistency Tracker (Smoothing) ──
-                // Smooths out single-frame match failures (flickering)
-                if (!this._idTracker) this._idTracker = { currentMatch: null, streak: 0, displayUser: null, graceFrames: 0 };
-                
-                const rawName = rawMatch ? rawMatch.name : null;
-                
-                if (rawName) {
-                    if (rawName === this._idTracker.currentMatch) {
-                        this._idTracker.streak++;
-                    } else {
-                        this._idTracker.currentMatch = rawName;
-                        this._idTracker.streak = 1;
-                    }
-                } else {
-                    this._idTracker.streak = 0;
-                    this._idTracker.currentMatch = null;
-                }
-
-                // Lock on after 3 consecutive frames
-                if (this._idTracker.streak >= 3 && rawMatch) {
-                    this._idTracker.displayUser = rawMatch;
-                    this._idTracker.graceFrames = 15; // Hold this identity for 15 frames even if lost
-                } else if (this._idTracker.graceFrames > 0) {
-                    this._idTracker.graceFrames--;
-                } else {
-                    this._idTracker.displayUser = null; // Drop to unknown
-                }
-
-                const confirmedUser = this._idTracker.displayUser;
-
-                // Draw face bounding boxes (green / yellow / red)
-                const faceCount = RakshakSecurity.drawFaceBox(
-                    this.ui.ctx, this.ui.canvas, faces, confirmedUser, livenessResult
-                );
-
-                // COCO-SSD: person count from body detection
-                RakshakSecurity.processCoco(objects);
-
-                // Fire detection via pixel color analysis (every 3rd frame)
-                RakshakFire.detect(this.ui.video, this.ui.ctx, this.ui.canvas);
-
-                // Person count
-                document.getElementById('count-val').innerText = faceCount;
-
-                if (faceCount === 0) {
-                    document.getElementById('identity-val').innerText = 'NO FACE';
-                    document.getElementById('identity-val').className = 'text-[10px] font-black uppercase text-slate-500';
-                    RakshakLiveness.reset();
-                    this._idTracker = { name: null, count: 0, confirmed: null };
-                }
-
-                requestAnimationFrame(() => this.loop());
-            }
-        };
-    </script>
+    <script src="./js/main.js"></script>
 </body>
 
 </html

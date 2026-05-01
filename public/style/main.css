@@ -1,0 +1,82 @@
+        :root {
+            --bg-deep: #18181b; /* zinc-900 */
+            --emerald: #f59e0b; /* amber-500 as primary */
+            --rose: #ef4444;
+            --amber: #f59e0b;
+        }
+
+        body {
+            background: var(--bg-deep);
+            color: #fafafa; /* zinc-50 */
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .glass {
+            background: rgba(39, 39, 42, 0.85); /* zinc-800 */
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(245, 158, 11, 0.15); /* amber-500/15 */
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+
+        .monitor-frame {
+            position: relative;
+            background: #000;
+            border-radius: 1rem;
+            overflow: hidden;
+            border: 2px solid #1e293b;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 20;
+            /* Mirror canvas to match mirrored video */
+            transform: scaleX(-1);
+        }
+
+        .alert-active {
+            animation: pulse-red 0.5s infinite alternate;
+        }
+
+        @keyframes pulse-red {
+            from {
+                border-color: #1e293b;
+            }
+
+            to {
+                border-color: var(--rose);
+                box-shadow: 0 0 20px var(--rose);
+            }
+        }
+
+        /* Liveness progress ring */
+        #liveness-ring {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 30;
+            display: none;
+        }
+
+        .liveness-svg circle.track {
+            stroke: rgba(255, 255, 255, 0.1);
+        }
+
+        .liveness-svg circle.fill {
+            transition: stroke-dashoffset 0.1s linear;
+            stroke-linecap: round;
+        }
